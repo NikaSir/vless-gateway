@@ -145,7 +145,7 @@ func (u *Updater) Update(ctx context.Context) (Manifest, error) {
 	defer os.RemoveAll(stage)
 	sources := u.Sources
 	if len(sources) == 0 {
-		sources = map[string]string{"geosite-ru": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-ru.srs", "geoip-ru": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs"}
+		sources = map[string]string{"geosite-ru": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs", "geoip-ru": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs"}
 	}
 	for _, tag := range []string{"geosite-ru", "geoip-ru"} {
 		path := filepath.Join(stage, tag+".srs")

@@ -1,0 +1,58 @@
+name: Gateway checks
+on:
+  pull_request:
+  push:
+    branches: [main, feature/nanopi-r5s-gateway-v1]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Install validators
+        run: |
+          python -m pip install jsonschema==4.25.1 shellcheck-py==0.11.0.1
+      - name: Fetch verified sing-box
+        run: |
+          binary=$(sh scripts/fetch-sing-box-checker.sh amd64)
+          echo "SING_BOX_BIN=$binary" >> "$GITHUB_ENV"
+      - name: Format, vet, unit and race checks
+        run: |
+          test -z "$(gofmt -l cmd internal)"
+          make verify
+      - name: Root-only Unix socket contract
+        run: sudo env PATH="$PATH" go test ./internal/control -count=1 -v
+      - name: JSON schemas, shell lifecycle and installer
+        run: |
+          python scripts/check_contracts.py
+          shellcheck scripts/*.sh scripts/lib/*.sh openwrt/etc/init.d/* openwrt/usr/libexec/* openwrt/etc/hotplug.d/iface/* tests/openwrt/*.sh tests/install/*.sh tests/package/*.sh
+          sh tests/openwrt/check_overlay.sh
+          sh tests/install/test_preflight.sh
+          sh tests/install/test_backup_restore.sh
+          sudo env PATH="$PATH" SING_BOX_BIN="$SING_BOX_BIN" sh tests/install/test_install.sh
+      - name: Secret scan
+        run: |
+          sh scripts/scan-secrets.sh --self-test
+          sh scripts/scan-secrets.sh
+      - name: Deterministic ARM64 archive
+        run: |
+          sh scripts/package.sh
+          sh tests/package/check_archive.sh
+          cp dist/nikas-vless-gateway-1.0.0-beta001-aarch64.tar.gz /tmp/first-build.tar.gz
+          sh scripts/package.sh
+          cmp /tmp/first-build.tar.gz dist/nikas-vless-gateway-1.0.0-beta001-aarch64.tar.gz
+          sh tests/package/check_archive.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nikas-vless-gateway-1.0.0-beta001-aarch64
+          path: |
+            dist/nikas-vless-gateway-1.0.0-beta001-aarch64.tar.gz
+            dist/nikas-vless-gateway-1.0.0-beta001-aarch64.tar.gz.sha256

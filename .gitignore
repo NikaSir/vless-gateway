@@ -31,3 +31,5 @@ Thumbs.db
 .superpowers/
 dist/
 .tools/
+__pycache__/
+*.pyc

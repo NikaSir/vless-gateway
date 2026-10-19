@@ -13,6 +13,9 @@ import (
 type fetch struct{ bad bool }
 
 func (f fetch) Fetch(ctx context.Context, url string, w io.Writer) (FetchMeta, error) {
+	if strings.HasSuffix(url, "/geosite-ru.srs") {
+		return FetchMeta{}, errors.New("upstream filename does not exist")
+	}
 	if f.bad {
 		return FetchMeta{}, errors.New("failed")
 	}

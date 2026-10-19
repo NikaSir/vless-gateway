@@ -51,7 +51,7 @@ type clock struct{ n int64 }
 func (c *clock) Now() time.Time { c.n++; return time.Unix(c.n, 0) }
 func TestConcurrentCycleAndReconciliation(t *testing.T) {
 	f := &fakeClash{selected: "direct", barrier: make(chan struct{})}
-	m, _ := failover.New(failover.Config{2, 3, 8})
+	m, _ := failover.New(failover.Config{BootstrapSuccesses: 2, FailureCycles: 3, RecoveryCycles: 8})
 	s, err := New(Config{Interval: 15 * time.Second, Timeout: time.Second, Targets: [2]string{"https://one.example/204", "https://two.example/204"}}, f, f, m, nil, &clock{})
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +87,7 @@ func TestConcurrentCycleAndReconciliation(t *testing.T) {
 }
 func TestControllerRestartRetainsSelectionDuringBootstrap(t *testing.T) {
 	f := &fakeClash{selected: "vless-de"}
-	m, _ := failover.New(failover.Config{2, 3, 8})
+	m, _ := failover.New(failover.Config{BootstrapSuccesses: 2, FailureCycles: 3, RecoveryCycles: 8})
 	s, _ := New(Config{Interval: time.Second, Timeout: time.Second, Targets: [2]string{"https://one.example", "https://two.example"}}, f, f, m, nil, &clock{})
 	snap, err := s.PollOnce(context.Background())
 	if err != nil || f.selects != 0 || *snap.ActiveRoute.Value != model.RouteGermany {

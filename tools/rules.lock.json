@@ -1,0 +1,14 @@
+{
+ "geosite-ru":{
+  "url":"https://raw.githubusercontent.com/SagerNet/sing-geosite/ea962e34bf255b69f3a66690e4a53900d48b48ea/geosite-category-ru.srs",
+  "source_commit":"ea962e34bf255b69f3a66690e4a53900d48b48ea",
+  "sha256":"452eaad61453f93e2e90a24b60bd3deafe8e0a44c51918586c97bbd7ff9e10f3",
+  "bytes":8810
+ },
+ "geoip-ru":{
+  "url":"https://raw.githubusercontent.com/SagerNet/sing-geoip/eb32cd6ed4a16fcb3bf9a36ccebf28e45716ae84/geoip-ru.srs",
+  "source_commit":"eb32cd6ed4a16fcb3bf9a36ccebf28e45716ae84",
+  "sha256":"bdca5cdb44cdcf0940001e5952386822a6f4ffa8b2c8eea00340aa6f585c7f9d",
+  "bytes":50096
+ }
+}

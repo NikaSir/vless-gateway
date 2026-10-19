@@ -19,7 +19,7 @@ func (q *quietClash) Selected(context.Context, string) (string, error) { return 
 func (q *quietClash) Select(context.Context, string, string) error     { q.selects++; return nil }
 func TestDaemonProviderDoesNotInventInternetOrResetRoute(t *testing.T) {
 	q := &quietClash{}
-	m, _ := failover.New(failover.Config{2, 3, 8})
+	m, _ := failover.New(failover.Config{BootstrapSuccesses: 2, FailureCycles: 3, RecoveryCycles: 8})
 	c, _ := controller.New(controller.Config{Interval: time.Second, Timeout: time.Second, Targets: [2]string{"https://one.example", "https://two.example"}}, q, q, m, nil, controller.RealClock{})
 	p := &GatewayProvider{Controller: c}
 	s := p.Snapshot(context.Background())
