@@ -13,11 +13,11 @@
 ## Global Constraints
 
 - Поддерживается только NanoPi R5S LTS 4 GB / 64 GB eMMC и FriendlyWrt 24.10.2. Не добавлять Raspberry Pi, Debian/Armbian, systemd, контейнерный или IPv6-транзитный путь.
-- NanoPi не создаёт SNAT, masquerade или второй NAT-контур. UXG-Max сохраняет LAN/VLAN, DHCP, Wi-Fi policy и существующий NAT.
+- **No SNAT/masquerade:** NanoPi не создаёт SNAT, masquerade или второй NAT-контур. UXG-Max сохраняет LAN/VLAN, DHCP, Wi-Fi policy и существующий NAT.
 - Начальная версия — 1.0.0-beta001; sing-box закреплён на 1.12.22. Обновление этих границ требует отдельного решения и повторного bench-теста.
 - Продуктовые UUID, REALITY keys, short IDs, адреса VLESS-серверов, subscription URL и API tokens никогда не попадают в Git, тестовые логи, ошибки, артефакты или диагностику.
 - Все изменяющие операции должны быть атомарными, сохранять последнюю рабочую генерацию и иметь проверяемый rollback.
-- Любая ошибка VLESS, gatewayd, sing-box, DNS или rule-set должна сохранять доступ в интернет через DIRECT, если NanoPi и оба кабеля физически работают.
+- Любая ошибка VLESS, gatewayd, sing-box, split DNS или rule-set должна сохранять доступ в интернет через DIRECT, если NanoPi и оба кабеля физически работают.
 - gatewayd не сбрасывает Selector при штатном завершении: падение контроллера не должно останавливать data plane.
 - Публичный API v1 — только GET. Локальные write-команды доступны только root через Unix socket режима 0600.
 - Каждый production-code шаг начинается с падающего теста. После каждого task выполняются указанные проверки и создаётся отдельный commit.
@@ -96,11 +96,10 @@
 - [ ] Run:
 
         make fmt
+        make vet
         make test
-        make build-arm64
-        file dist/gatewayd dist/gatewayctl
 
-  Expected: tests pass and both outputs report Linux ARM64 once the command packages exist; until Task 8, build-arm64 must print a clear deferred-target message rather than silently succeeding.
+  Expected: PASS. build-arm64 is defined but is not invoked until Task 8 creates both command packages.
 - [ ] Commit:
 
         git add go.mod VERSION Makefile internal/buildinfo .gitignore .github/dependabot.yml
@@ -375,7 +374,7 @@
         go test ./internal/diagnostics ./internal/system ./internal/api -count=1
 
   Expected: FAIL because the handlers and collectors are missing.
-- [ ] Implement constant-time bearer comparison after equal-length normalization, bounded JSON encoding and graceful HTTP shutdown. Do not add any write endpoint.
+- [ ] Implement fixed-length SHA-256 digest comparison with crypto/subtle for bearer authentication, bounded JSON encoding and graceful HTTP shutdown. Do not add any write endpoint.
 - [ ] Run:
 
         go test -race ./internal/diagnostics ./internal/system ./internal/api
@@ -482,7 +481,7 @@
 - [ ] Write preflight tests before scripts. Mock board info, ip/route output, UCI and MAC inventory. Accept only FriendlyWrt 24.10.2 + NanoPi R5S + aarch64 + sing-box 1.12.22 with Clash API. Reject missing packages, duplicate MAC, missing link role, interface-name drift, transit overlap with any supplied/current route, management default route and reserved nft/ip-rule collision.
 - [ ] Assert every preflight rejection occurs before the first call to backup, uci set/commit, service stop or file replacement. Use an append-only command journal fixture to prove order.
 - [ ] Write install tests for --stage direct and --stage policy. Default invocation installs binaries/config/examples/overlay but leaves transit policy DIRECT. --stage policy is refused until direct-stage health evidence exists in local state.
-- [ ] Test idempotence, root requirement, atomic file replacement, correct 0755/0644/0600 modes, no overwrite of existing secrets.json, placeholder-secret refusal, no eMMC formatting/reflash command and rollback on any post-backup error.
+- [ ] Test idempotence, root requirement, atomic file replacement, correct 0755/0644/0600 modes, no overwrite of existing secrets.json, placeholder-secret refusal, no eMMC formatting/reflash command and rollback on any post-backup error. On first install, accept VLESS material only through --secrets-file (never CLI value flags); if API/Clash tokens are absent, generate two independent random tokens from the kernel CSPRNG and write the completed file once with mode 0600.
 - [ ] Write backup/restore tests. Backup contains UCI network/firewall/dhcp, installed files, package/version inventory, runtime config, current rule generation and secret file only inside a root-owned 0600 archive; manifest records SHA-256. Restore verifies checksum/model/version, stops services in safe order, restores atomically and returns DIRECT if policy health fails.
 - [ ] Write doctor tests for hardware roles, routes, no NAT, IPv6 disabled, dnsmasq upstream order, sing-box/gatewayd health, API bind, rule freshness and disk/temperature. Output is redacted and has human plus --json modes.
 - [ ] Run:
@@ -519,7 +518,7 @@
 - Modify: **.gitignore**
 
 - [ ] Write package tests for exact archive name nikas-vless-gateway-1.0.0-beta001-aarch64.tar.gz, sorted paths, fixed SOURCE_DATE_EPOCH, uid/gid 0, executable modes, no workspace absolute paths, manifest SHA-256 and required contents.
-- [ ] Write pin tests requiring GO_VERSION=1.27.2, SING_BOX_VERSION=1.12.22 and a literal 64-hex official Linux ARM64 archive checksum. fetch-sing-box-checker.sh verifies the downloaded archive before extracting and verifies sing-box version plus Clash API config support.
+- [ ] Write pin tests requiring GO_VERSION=1.27.2, SING_BOX_VERSION=1.12.22, a literal 64-hex official Linux ARM64 archive checksum, and literal SHA-256/source-commit pins for the packaged geosite-ru.srs and geoip-ru.srs snapshot. fetch-sing-box-checker.sh verifies the downloaded archive before extracting and verifies sing-box version plus Clash API config support.
 - [ ] Write secret-scan fixtures with one value for every prohibited class. The scanner must fail on private fixture credentials, UUID, REALITY key, short ID, token and subscription URL, but allow explicit REPLACE_WITH_ placeholders and RFC 5737/3849 documentation addresses.
 - [ ] Run:
 
@@ -527,7 +526,7 @@
         sh scripts/scan-secrets.sh --self-test
 
   Expected: FAIL until packaging and scanner exist.
-- [ ] Implement package.sh to build static linux/arm64 gatewayd and gatewayctl, assemble overlay/examples/schemas/initial validated RU rule generation, create deterministic tar.gz and matching .sha256. Do not package a production secrets.json.
+- [ ] Implement package.sh to build static linux/arm64 gatewayd and gatewayctl, assemble overlay/examples/schemas plus the source-commit/SHA-pinned initial RU rule generation, create deterministic tar.gz and matching .sha256. Do not package a production secrets.json.
 - [ ] Expand CI into explicit jobs: gofmt/vet; unit + race; JSON/Schema; pinned sing-box render/check; ShellCheck + shell tests; secret scan; ARM64 build; deterministic package twice and byte-compare; artifact inventory/checksum. Keep the existing repository safety checks.
 - [ ] Obtain the literal sing-box checksum from the official SagerNet 1.12.22 GitHub release checksum asset during implementation, commit it to tools/checksums, and make CI reject missing, changed or unverified pins. Never use latest.
 - [ ] Run:
@@ -607,9 +606,25 @@
 - [ ] Write DataUpdateCoordinator tests: one coordinated refresh obtains status/routes/traffic/system/health, keeps last good values only with stale=true, marks unavailable accurately and uses diagnostics only on explicit diagnostic refresh.
 - [ ] Write entity tests mapping the reserved panel roles: gateway/lan/tunnel/server/internet status; active/default/DNS route; latency; uptime; bypass count; last route change; rates/totals; active connections. available=false produces unavailable, never zero.
 - [ ] Write config-flow tests for host/token validation, duplicate gateway rejection, auth failure, timeout, schema mismatch and token storage in the config entry rather than options or entity attributes.
-- [ ] Run the repository test command documented in its CI. Expected: FAIL before api/coordinator/platform implementation.
+- [ ] Run:
+
+        python -m unittest discover -s tests -v
+        node scripts/build-frontend-bundle.mjs --check
+
+  Expected: FAIL before api/coordinator/platform implementation.
 - [ ] Implement client, coordinator and sensor/binary_sensor platforms. The browser panel reads HA entities/coordinator data only; it never calls NanoPi directly and contains no token. Keep every route/mode/reload control disabled and remove any UI affordance that implies a write command.
-- [ ] Update manifests/docs, rebuild the checked-in frontend bundle with the existing script, run Python/frontend/standard-document checks and verify no API token is emitted into the bundle.
+- [ ] Update manifests/docs, rebuild the checked-in frontend bundle with the existing script and verify no API token is emitted into the bundle.
+- [ ] Run:
+
+        python -m compileall -q custom_components tests
+        python -m unittest discover -s tests -v
+        node scripts/build-frontend-bundle.mjs --check
+        node --check custom_components/vless_gateway/frontend/vless-gateway-panel.js
+        node tests/shell_v2_harness.mjs
+        python scripts/check_nikas_ui_standard.py
+        python scripts/check_standard_documents.py
+
+  Expected: PASS; HACS and Hassfest must also pass in GitHub Actions.
 - [ ] Commit in ha-vless-gateway:
 
         git add custom_components tests README.md CHANGELOG.md docs .github/workflows/repository-checks.yml
