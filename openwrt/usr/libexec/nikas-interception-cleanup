@@ -1,0 +1,11 @@
+#!/bin/sh
+# The installer reserves these resources exclusively for this sing-box instance.
+set -u
+nft delete table inet sing-box 2>/dev/null || :
+priority=9020
+while [ "$priority" -le 9039 ]; do
+ ip -4 rule del priority "$priority" 2>/dev/null || :
+ priority=$((priority + 1))
+done
+ip -4 rule del priority 32760 2>/dev/null || :
+ip -4 route flush table 20220 2>/dev/null || :

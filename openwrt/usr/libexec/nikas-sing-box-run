@@ -1,0 +1,26 @@
+#!/bin/sh
+set -u
+root=${NIKAS_ROOT:-}
+cleanup="$root/usr/libexec/nikas-interception-cleanup"
+config_path=${NIKAS_CONFIG_ROOT:-/etc/nikas-vless}/config.json
+"$cleanup"
+if ! sing-box check -c "$config_path" >/dev/null 2>&1; then
+ logger -t nikas-vless 'sing-box configuration rejected'
+ exit 1
+fi
+child=
+# shellcheck disable=SC2329
+stop_child() {
+ trap '' HUP INT TERM
+ if [ -n "$child" ]; then kill -TERM "$child" 2>/dev/null || :; wait "$child" 2>/dev/null || :; fi
+ "$cleanup"
+ exit 0
+}
+trap stop_child HUP INT TERM
+# Do not send unfiltered sing-box errors (which may include endpoints) to syslog.
+sing-box run -c "$config_path" >/dev/null 2>&1 &
+child=$!
+wait "$child" 2>/dev/null
+"$cleanup"
+logger -t nikas-vless 'sing-box exited; DIRECT forwarding restored'
+exit 1
