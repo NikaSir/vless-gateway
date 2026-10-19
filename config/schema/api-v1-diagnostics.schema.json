@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "gateway_version",
+    "generated_at",
+    "state",
+    "freshness",
+    "data"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1"
+    },
+    "gateway_version": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "state": {
+      "enum": [
+        "healthy",
+        "starting",
+        "degraded_fail_open",
+        "control_error"
+      ]
+    },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available",
+        "age_seconds",
+        "stale"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "age_seconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "stale": {
+          "type": "boolean"
+        }
+      }
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "state",
+        "mode",
+        "active_route",
+        "components",
+        "issues"
+      ]
+    },
+    "error": {
+      "type": "string"
+    }
+  }
+}
