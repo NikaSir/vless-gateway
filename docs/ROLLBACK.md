@@ -22,6 +22,12 @@ Expected: checksum/metadata/path validation before archive writes; previous file
 
 Restore uses individually atomic file replacements, not a filesystem-wide transaction. Power loss during restore requires repeating it from the console; keep bypass available until verification.
 
+Backup format 2 records the owned path scope and restores absence as well as contents, including service enablement links. It retains the backup directory and unrelated files. Format-1 development archives are rejected. If service recovery fails after files are restored, the command reports failure; keep bypass available and finish recovery locally.
+
+An interrupted installer leaves `/etc/nikas-vless-install.transaction`. The next invocation restores its referenced backup before a new preflight or installation. Do not delete this marker to bypass recovery. Catchable signals and installation failures attempt that restore immediately. A failed automatic restore retains the marker and prints the failure.
+
+Configuration activation records `config.json.transaction` before publication and retains `config.json.previous` until health acknowledgement. Normal sing-box startup recovers an unfinished publication before validation. `gatewayctl --config-root /etc/nikas-vless recover-config` performs the same disk recovery while stopped; validate afterwards before starting.
+
 ## NanoPi power loss
 
 Software cannot bridge an unpowered NanoPi. Identify labeled cables and the original UXG-Max WAN profile before disconnecting anything. Restore that profile's pre-NanoPi addressing/DNS, then connect Keenetic directly to the selected UXG-Max WAN using the bypass cable.

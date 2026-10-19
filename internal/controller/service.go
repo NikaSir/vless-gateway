@@ -114,12 +114,15 @@ func (s *Service) PollOnce(ctx context.Context) (model.StatusSnapshot, error) {
 func (s *Service) reconcile(ctx context.Context) error {
 	selected, e := s.sel.Selected(ctx, "vless-active")
 	if e != nil {
+		s.s.ActiveRoute = model.Unavailable[model.Route]("selector_unavailable")
+		s.s.DNSRoute = model.Unavailable[model.Route]("selector_unavailable")
 		s.s.State = model.ControlError
 		return errors.New("selector unavailable")
 	}
 	actual, ok := parseTag(selected)
 	if !ok {
 		s.s.ActiveRoute = model.Unavailable[model.Route]("unknown_selector")
+		s.s.DNSRoute = model.Unavailable[model.Route]("unknown_selector")
 		s.s.State = model.ControlError
 		return errors.New("invalid selector state")
 	}
@@ -133,11 +136,15 @@ func (s *Service) reconcile(ctx context.Context) error {
 	}
 	if desired != actual {
 		if s.sel.Select(ctx, "vless-active", routeTag(desired)) != nil {
+			s.s.ActiveRoute = model.Unavailable[model.Route]("selector_unconfirmed")
+			s.s.DNSRoute = model.Unavailable[model.Route]("selector_unconfirmed")
 			s.s.State = model.ControlError
 			return errors.New("selector change failed")
 		}
 		confirmed, e := s.sel.Selected(ctx, "vless-active")
 		if e != nil || confirmed != routeTag(desired) {
+			s.s.ActiveRoute = model.Unavailable[model.Route]("selector_unconfirmed")
+			s.s.DNSRoute = model.Unavailable[model.Route]("selector_unconfirmed")
 			s.s.State = model.ControlError
 			return errors.New("selector acknowledgement missing")
 		}

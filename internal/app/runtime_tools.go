@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -25,7 +26,10 @@ func NewReloader(r config.Runtime) *Reloader {
 	return &Reloader{r.Root, c}
 }
 func (r *Reloader) Reload(ctx context.Context) error {
-	if exec.CommandContext(ctx, "/etc/init.d/nikas-sing-box", "restart").Run() != nil {
+	cmd := exec.CommandContext(ctx, "/etc/init.d/nikas-sing-box", "restart")
+	// This restart is inside the live transaction; ordinary boot/start recovers it.
+	cmd.Env = append(os.Environ(), "NIKAS_CONFIG_ACTIVATION=1")
+	if cmd.Run() != nil {
 		return errors.New("sing-box restart failed")
 	}
 	return nil
@@ -34,7 +38,7 @@ func (r *Reloader) Healthy(ctx context.Context) error {
 	for i := 0; i < 20; i++ {
 		if r.client != nil {
 			v, e := r.client.Version(ctx)
-			if e == nil && v == "1.12.22" {
+			if e == nil && strings.TrimPrefix(v, "sing-box ") == "1.12.22" {
 				return nil
 			}
 		}

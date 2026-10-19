@@ -18,11 +18,16 @@ import (
 
 var Paths = []string{"etc/config/network", "etc/config/firewall", "etc/config/dhcp", "etc/config/dropbear", "etc/config/nikas-vless", "etc/nikas-vless", "etc/init.d/nikas-sing-box", "etc/init.d/nikas-gatewayd", "etc/hotplug.d/iface/90-nikas-vless", "etc/sysctl.d/90-nikas-vless.conf", "usr/share/nftables.d/ruleset-post/90-nikas-vless.nft", "usr/bin/gatewayd", "usr/bin/gatewayctl", "usr/libexec/nikas-interception-cleanup", "usr/libexec/nikas-sing-box-run", "usr/libexec/nikas-vless", "etc/crontabs/root"}
 
+func init() {
+	Paths = append(Paths, "etc/rc.d/S95nikas-sing-box", "etc/rc.d/K10nikas-sing-box", "etc/rc.d/S96nikas-gatewayd", "etc/rc.d/K09nikas-gatewayd")
+}
+
 type metadata struct {
 	Format    int       `json:"format"`
 	Board     string    `json:"board"`
 	OS        string    `json:"os"`
 	CreatedAt time.Time `json:"created_at"`
+	Scope     []string  `json:"scope"`
 }
 
 func allowed(path string) bool {
@@ -40,6 +45,11 @@ func allowed(path string) bool {
 	return false
 }
 func validLink(name, target string) bool {
+	for _, service := range []struct{ name, link string }{{"S95nikas-sing-box", "nikas-sing-box"}, {"K10nikas-sing-box", "nikas-sing-box"}, {"S96nikas-gatewayd", "nikas-gatewayd"}, {"K09nikas-gatewayd", "nikas-gatewayd"}} {
+		if name == "etc/rc.d/"+service.name {
+			return target == "../init.d/"+service.link
+		}
+	}
 	return name == "etc/nikas-vless/rules/current" && strings.HasPrefix(target, "generations/") && filepath.Clean(target) == target && len(strings.Split(target, "/")) == 2
 }
 func Create(root, out string) (string, error) {
@@ -63,7 +73,7 @@ func Create(root, out string) (string, error) {
 	}()
 	gz := gzip.NewWriter(f)
 	tw := tar.NewWriter(gz)
-	meta, _ := json.Marshal(metadata{1, "friendlyarm,nanopi-r5s", "FriendlyWrt 24.10.2", time.Now().UTC()})
+	meta, _ := json.Marshal(metadata{2, "friendlyarm,nanopi-r5s", "FriendlyWrt 24.10.2", time.Now().UTC(), append([]string(nil), Paths...)})
 	if tw.WriteHeader(&tar.Header{Name: ".nikas-backup.json", Mode: 0600, Size: int64(len(meta))}) != nil {
 		return "", errors.New("backup header failed")
 	}
@@ -154,6 +164,9 @@ type entry struct {
 }
 
 func Restore(root, path string) error {
+	if !filepath.IsAbs(root) {
+		return errors.New("absolute restore root required")
+	}
 	data, e := os.ReadFile(path)
 	if e != nil || len(data) > 256<<20 {
 		return errors.New("backup unreadable or oversized")
@@ -179,6 +192,7 @@ func Restore(root, path string) error {
 	tr := tar.NewReader(io.LimitReader(gz, 256<<20+1))
 	var entries []entry
 	metaOK := false
+	var scope []string
 	seen := map[string]bool{}
 	for {
 		h, e := tr.Next()
@@ -198,10 +212,21 @@ func Restore(root, path string) error {
 			}
 			b, e := io.ReadAll(tr)
 			var m metadata
-			if e != nil || json.Unmarshal(b, &m) != nil || m.Format != 1 || m.Board != "friendlyarm,nanopi-r5s" || m.OS != "FriendlyWrt 24.10.2" {
+			if e != nil || json.Unmarshal(b, &m) != nil || m.Format != 2 || m.Board != "friendlyarm,nanopi-r5s" || m.OS != "FriendlyWrt 24.10.2" || len(m.Scope) == 0 {
 				return errors.New("backup hardware/version mismatch")
 			}
 			metaOK = true
+			known := map[string]bool{}
+			for _, p := range Paths {
+				known[p] = true
+			}
+			for _, p := range m.Scope {
+				if !known[p] {
+					return errors.New("invalid backup scope")
+				}
+				delete(known, p)
+			}
+			scope = m.Scope
 			continue
 		}
 		if !allowed(h.Name) || h.Size > 64<<20 {
@@ -230,6 +255,51 @@ func Restore(root, path string) error {
 	if !metaOK {
 		return errors.New("backup metadata missing")
 	}
+	byName := map[string]entry{}
+	for _, en := range entries {
+		byName[en.name] = en
+	}
+	for _, en := range entries {
+		inScope := false
+		for _, p := range scope {
+			if en.name == p || strings.HasPrefix(en.name, p+"/") {
+				inScope = true
+				break
+			}
+		}
+		if !inScope {
+			return errors.New("entry outside backup scope")
+		}
+		for parent := filepath.Dir(en.name); parent != "."; parent = filepath.Dir(parent) {
+			if p, ok := byName[parent]; ok && !p.directory {
+				return errors.New("invalid archive parent")
+			}
+		}
+	}
+	// Refuse existing symlink ancestors before pruning or writing any destination.
+	for _, p := range append(append([]string(nil), scope...), entryNames(entries)...) {
+		for parent := filepath.Dir(filepath.Join(root, p)); ; parent = filepath.Dir(parent) {
+			info, err := os.Lstat(parent)
+			if err != nil && !os.IsNotExist(err) {
+				return errors.New("restore destination unavailable")
+			}
+			if err == nil && (!info.IsDir() || info.Mode()&os.ModeSymlink != 0) {
+				return errors.New("unsafe restore destination")
+			}
+			if parent == filepath.Clean(root) {
+				break
+			}
+			if parent == filepath.Dir(parent) {
+				return errors.New("invalid restore root")
+			}
+		}
+	}
+	// Restore absence as well as contents. Never descend into or delete backups.
+	for _, p := range scope {
+		if err := prune(root, p, byName); err != nil {
+			return errors.New("restore reconciliation failed")
+		}
+	}
 	// Validation above is complete before the first write into the destination.
 	for _, en := range entries {
 		target := filepath.Join(root, en.name)
@@ -237,9 +307,15 @@ func Restore(root, path string) error {
 			if e = os.MkdirAll(target, en.mode); e != nil {
 				return errors.New("restore directory failed")
 			}
+			if e = os.Chmod(target, en.mode); e != nil {
+				return errors.New("restore directory mode failed")
+			}
 			continue
 		}
 		if en.link != "" {
+			if os.MkdirAll(filepath.Dir(target), 0700) != nil {
+				return errors.New("restore link parent failed")
+			}
 			tmp := target + ".restore-link"
 			_ = os.Remove(tmp)
 			if os.Symlink(en.link, tmp) != nil || os.Rename(tmp, target) != nil {
@@ -250,6 +326,59 @@ func Restore(root, path string) error {
 		if e = state.AtomicWrite(target, en.data, en.mode); e != nil {
 			return errors.New("restore file failed")
 		}
+	}
+	return nil
+}
+
+func entryNames(entries []entry) []string {
+	names := make([]string, 0, len(entries))
+	for _, en := range entries {
+		names = append(names, en.name)
+	}
+	return names
+}
+
+func prune(root, name string, expected map[string]entry) error {
+	if name == "etc/nikas-vless/backups" {
+		return nil
+	}
+	path := filepath.Join(root, name)
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	en, keep := expected[name]
+	if info.IsDir() {
+		children, err := os.ReadDir(path)
+		if err != nil {
+			return err
+		}
+		for _, child := range children {
+			if err := prune(root, filepath.Join(name, child.Name()), expected); err != nil {
+				return err
+			}
+		}
+		if keep && en.directory {
+			return nil
+		}
+		// The runtime directory may remain solely to contain the preserved backups.
+		children, err = os.ReadDir(path)
+		if err != nil {
+			return err
+		}
+		if len(children) > 0 {
+			if name == "etc/nikas-vless" {
+				return nil
+			}
+			return errors.New("unreconciled directory")
+		}
+		return os.Remove(path)
+	}
+	if !keep || en.directory || en.link != "" {
+		return os.Remove(path)
 	}
 	return nil
 }

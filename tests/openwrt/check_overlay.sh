@@ -5,3 +5,4 @@ for file in "$repo"/openwrt/etc/init.d/* "$repo"/openwrt/usr/libexec/* "$repo"/o
  sh -n "$file"
 done
 sh "$repo/tests/openwrt/test_fail_open.sh"
+sh "$repo/tests/openwrt/test_config_recovery.sh"

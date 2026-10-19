@@ -2,6 +2,7 @@ package singbox
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/NikaSir/vless-gateway/internal/state"
 	"os"
@@ -20,6 +21,13 @@ type Reloader interface {
 func Activate(ctx context.Context, target string, data []byte, c Checker, r Reloader) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
+	}
+	if recovered, e := Recover(target); e != nil {
+		return e
+	} else if recovered {
+		if r.Reload(ctx) != nil || r.Healthy(ctx) != nil {
+			return errors.New("recovered config health not confirmed")
+		}
 	}
 	dir := filepath.Dir(target)
 	if os.MkdirAll(dir, 0700) != nil {
@@ -48,21 +56,72 @@ func Activate(ctx context.Context, target string, data []byte, c Checker, r Relo
 			return errors.New("config backup failed")
 		}
 	}
+	marker, _ := json.Marshal(configTransaction{Format: 1, HadOld: hadOld})
+	if state.AtomicWrite(target+".transaction", marker, 0600) != nil {
+		return errors.New("config journal write failed")
+	}
 	if e = state.AtomicWrite(target, data, 0600); e != nil {
 		return errors.New("config publication failed")
 	}
 	if r.Reload(ctx) == nil && r.Healthy(ctx) == nil {
-		return nil
+		return clearTransaction(target)
 	}
 	rollbackCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if hadOld {
-		if state.AtomicWrite(target, previous, 0600) != nil {
-			return errors.New("config rollback write failed")
-		}
-	} else {
-		_ = os.Remove(target)
+	if _, e := Recover(target); e != nil {
+		return e
 	}
 	_ = r.Reload(rollbackCtx)
 	return errors.New("config activation failed; previous generation restored")
+}
+
+type configTransaction struct {
+	Format int  `json:"format"`
+	HadOld bool `json:"had_old"`
+}
+
+// Recover restores a published but unconfirmed configuration before startup or retry.
+// The journal remains until the previous bytes have been durably restored.
+func Recover(target string) (bool, error) {
+	b, e := os.ReadFile(target + ".transaction")
+	if os.IsNotExist(e) {
+		return false, nil
+	}
+	if e != nil {
+		return false, errors.New("config journal unreadable")
+	}
+	var transaction configTransaction
+	if len(b) > 4096 || json.Unmarshal(b, &transaction) != nil || transaction.Format != 1 {
+		return false, errors.New("config journal invalid")
+	}
+	if transaction.HadOld {
+		old, e := os.ReadFile(target + ".previous")
+		if e != nil {
+			return false, errors.New("known-good config unavailable")
+		}
+		if state.AtomicWrite(target, old, 0600) != nil {
+			return false, errors.New("config recovery write failed")
+		}
+	} else if e := os.Remove(target); e != nil && !os.IsNotExist(e) {
+		return false, errors.New("config recovery remove failed")
+	}
+	if e := clearTransaction(target); e != nil {
+		return false, e
+	}
+	return true, nil
+}
+
+func clearTransaction(target string) error {
+	if e := os.Remove(target + ".transaction"); e != nil && !os.IsNotExist(e) {
+		return errors.New("config journal removal failed")
+	}
+	dir, e := os.Open(filepath.Dir(target))
+	if e != nil {
+		return errors.New("config directory unavailable")
+	}
+	defer dir.Close()
+	if dir.Sync() != nil {
+		return errors.New("config journal flush failed")
+	}
+	return nil
 }

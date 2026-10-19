@@ -12,7 +12,7 @@ cp dist/gatewayd dist/gatewayctl "$stage/bin/"
 cp -Rp openwrt config VERSION LICENSE "$stage/"
 mkdir -p "$stage/scripts/lib"
 cp scripts/install.sh scripts/preflight.sh scripts/backup.sh scripts/restore.sh scripts/doctor.sh "$stage/scripts/"
-cp scripts/lib/common.sh "$stage/scripts/lib/"
+cp scripts/lib/common.sh scripts/lib/services.sh "$stage/scripts/lib/"
 if [ -d docs ]; then cp -Rp docs "$stage/"; fi
 # Execution plans are developer artifacts, not device installation inputs.
 if [ -d "$stage/docs/superpowers" ]; then rm -r "$stage/docs/superpowers"; fi

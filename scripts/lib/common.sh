@@ -5,7 +5,7 @@ require_root() { [ "$(id -u)" -eq 0 ] || { printf '%s\n' 'Root required' >&2; ex
 atomic_copy() {
  source_file=$1
  destination=$2
- mkdir -p "$(dirname "$destination")"
- cp -p "$source_file" "$destination.nikas-pending"
+ mkdir -p "$(dirname "$destination")" &&
+ cp -p "$source_file" "$destination.nikas-pending" &&
  mv -f "$destination.nikas-pending" "$destination"
 }

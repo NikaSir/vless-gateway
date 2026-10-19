@@ -35,6 +35,10 @@ type GatewayProvider struct {
 	FallbackDNS string
 }
 
+func newGatewayProvider(svc *controller.Service, client clash.Client, r config.Runtime) *GatewayProvider {
+	return &GatewayProvider{Controller: svc, Clash: client, Collector: system.New(r.Root), LocalDNS: "127.0.0.1:5353", FallbackDNS: net.JoinHostPort(r.Settings.DirectResolver, "53")}
+}
+
 func (p *GatewayProvider) Snapshot(ctx context.Context) model.StatusSnapshot {
 	s := p.Controller.Snapshot()
 	if p.LocalDNS != "" {
@@ -147,10 +151,7 @@ func RunDaemon(ctx context.Context, args []string, out io.Writer) error {
 	if saved, e := store.Load(ctx); e == nil {
 		svc.Restore(saved)
 	}
-	downstreamIP, _, _ := net.ParseCIDR(r.Settings.TransitSubnet)
-	v4 := downstreamIP.To4()
-	v4[3]++
-	provider := &GatewayProvider{Controller: svc, Clash: client, Collector: system.New(root), LocalDNS: "127.0.0.1:5353", FallbackDNS: net.JoinHostPort(v4.String(), "53")}
+	provider := newGatewayProvider(svc, client, r)
 	handler, e := api.NewServer(api.ServerConfig{ManagementListen: r.Settings.ManagementListen, BearerToken: r.Auth.APIToken}, provider, buildinfo.Current())
 	if e != nil {
 		return e

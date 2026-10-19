@@ -37,11 +37,17 @@ jobs:
           sh tests/openwrt/check_overlay.sh
           sh tests/install/test_preflight.sh
           sh tests/install/test_backup_restore.sh
+          sh tests/install/test_service_failures.sh
           sudo env PATH="$PATH" SING_BOX_BIN="$SING_BOX_BIN" sh tests/install/test_install.sh
       - name: Secret scan
         run: |
           sh scripts/scan-secrets.sh --self-test
           sh scripts/scan-secrets.sh
+      - name: Real DNS fallback and isolated kernel cleanup
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dnsmasq-base iproute2 nftables
+          sudo env PATH="$PATH" sh tests/openwrt/test_live_fail_open.sh
       - name: Deterministic ARM64 archive
         run: |
           sh scripts/package.sh

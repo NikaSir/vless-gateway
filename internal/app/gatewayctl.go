@@ -67,7 +67,7 @@ func RunCLI(ctx context.Context, args []string, out io.Writer, uid int) error {
 		default:
 			return errors.New("invalid mode")
 		}
-	case "validate", "render", "reload", "rules-update", "backup", "restore", "doctor", "preflight", "init-auth", "validate-input":
+	case "validate", "render", "reload", "rules-update", "backup", "restore", "doctor", "preflight", "init-auth", "validate-input", "recover-config":
 		if uid != 0 {
 			return errors.New("root required")
 		}
@@ -118,6 +118,10 @@ func RunCLI(ctx context.Context, args []string, out io.Writer, uid int) error {
 			return e
 		}
 		return config.Validate(r)
+	}
+	if command == "recover-config" {
+		_, err := singbox.Recover(filepath.Join(root, "config.json"))
+		return err
 	}
 	if command == "init-auth" {
 		path := filepath.Join(root, "auth.json")
@@ -177,24 +181,32 @@ func RunCLI(ctx context.Context, args []string, out io.Writer, uid int) error {
 		if !*yes || *archive == "" {
 			return errors.New("restore requires --backup and --yes")
 		}
+		stopFailed := false
 		if *systemRoot == "/" {
 			i, e := provision.Inspect(ctx)
 			if e != nil || i.Board != "friendlyarm,nanopi-r5s" || i.Version != "24.10.2" {
 				return errors.New("restore device verification failed")
 			}
-			_ = exec.CommandContext(ctx, "/etc/init.d/nikas-sing-box", "stop").Run()
-			_ = exec.CommandContext(ctx, "/etc/init.d/nikas-gatewayd", "stop").Run()
+			for _, service := range []string{"nikas-sing-box", "nikas-gatewayd"} {
+				path := filepath.Join("/etc/init.d", service)
+				if _, err := os.Stat(path); err == nil && exec.CommandContext(ctx, path, "stop").Run() != nil {
+					stopFailed = true
+				}
+			}
 		}
 		if e := backup.Restore(*systemRoot, *archive); e != nil {
 			return e
 		}
 		if *systemRoot == "/" {
-			_ = exec.CommandContext(ctx, "uci", "set", "nikas-vless.main.policy_enabled=0").Run()
-			_ = exec.CommandContext(ctx, "uci", "commit", "nikas-vless").Run()
-			_ = exec.CommandContext(ctx, "/etc/init.d/network", "restart").Run()
-			_ = exec.CommandContext(ctx, "/etc/init.d/firewall", "restart").Run()
-			_ = exec.CommandContext(ctx, "/etc/init.d/dnsmasq", "restart").Run()
-			_ = exec.CommandContext(ctx, "/etc/init.d/nikas-gatewayd", "restart").Run()
+			err := restartRestoredServices(ctx, "/", func(ctx context.Context, name string, args ...string) error {
+				return exec.CommandContext(ctx, name, args...).Run()
+			})
+			if err != nil {
+				return err
+			}
+			if stopFailed {
+				return errors.New("files restored; service stop was not confirmed")
+			}
 		}
 		_, e := fmt.Fprintln(out, "restored; DIRECT stage required")
 		return e

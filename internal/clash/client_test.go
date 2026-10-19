@@ -38,7 +38,7 @@ func TestClientProtocol(t *testing.T) {
 		case "/connections":
 			_, _ = w.Write([]byte(`{"downloadTotal":51,"uploadTotal":12,"connections":[{"id":"abc"}]}`))
 		case "/version":
-			_, _ = w.Write([]byte(`{"version":"1.12.22"}`))
+			_, _ = w.Write([]byte(`{"version":"sing-box 1.12.22"}`))
 		default:
 			w.WriteHeader(503)
 			_, _ = w.Write([]byte("canary-token raw body"))
@@ -70,7 +70,7 @@ func TestClientProtocol(t *testing.T) {
 		t.Fatal(co, e)
 	}
 	v, e := c.Version(ctx)
-	if e != nil || v != "1.12.22" {
+	if e != nil || v != "sing-box 1.12.22" {
 		t.Fatal(v, e)
 	}
 	_, e = c.Selected(ctx, "bad")

@@ -16,6 +16,7 @@ type fakeClash struct {
 	selected       string
 	calls, selects int
 	failSelect     bool
+	failObserve    bool
 	barrier        chan struct{}
 }
 
@@ -36,7 +37,12 @@ func (f *fakeClash) Delay(ctx context.Context, out, target string, d time.Durati
 	}
 	return clash.DelayResult{Latency: 20 * time.Millisecond}, nil
 }
-func (f *fakeClash) Selected(context.Context, string) (string, error) { return f.selected, nil }
+func (f *fakeClash) Selected(context.Context, string) (string, error) {
+	if f.failObserve {
+		return "", errors.New("not reachable")
+	}
+	return f.selected, nil
+}
 func (f *fakeClash) Select(_ context.Context, _, route string) error {
 	f.selects++
 	if f.failSelect {
@@ -74,7 +80,7 @@ func TestConcurrentCycleAndReconciliation(t *testing.T) {
 		t.Fatal("failed mutation not reported")
 	}
 	snap = s.Snapshot()
-	if *snap.ActiveRoute.Value != model.RouteGermany || snap.State != model.ControlError {
+	if snap.ActiveRoute.Available || snap.State != model.ControlError {
 		t.Fatal("unconfirmed route published")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -92,5 +98,22 @@ func TestControllerRestartRetainsSelectionDuringBootstrap(t *testing.T) {
 	snap, err := s.PollOnce(context.Background())
 	if err != nil || f.selects != 0 || *snap.ActiveRoute.Value != model.RouteGermany {
 		t.Fatal("restart interrupted traffic", snap, err)
+	}
+}
+
+func TestSelectorLossInvalidatesCurrentRouteDuringFreshPolling(t *testing.T) {
+	f := &fakeClash{selected: "vless-de"}
+	m, _ := failover.New(failover.Config{BootstrapSuccesses: 2, FailureCycles: 3, RecoveryCycles: 8})
+	s, _ := New(Config{Interval: time.Second, Timeout: time.Second, Targets: [2]string{"https://one.example", "https://two.example"}}, f, f, m, nil, &clock{})
+	first, err := s.PollOnce(context.Background())
+	if err != nil || !first.ActiveRoute.Available {
+		t.Fatal(first, err)
+	}
+	f.failObserve = true
+	for range 3 {
+		next, err := s.PollOnce(context.Background())
+		if err == nil || next.ActiveRoute.Available || next.ActiveRoute.Value != nil || next.DNSRoute.Available || !next.ObservedAt.After(first.ObservedAt) {
+			t.Fatal("stale route advertised as fresh", next, err)
+		}
 	}
 }

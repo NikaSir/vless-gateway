@@ -30,3 +30,52 @@ test "$(stat -c %a "$secret")" = 600
 test -f "$test_root/device/etc/nikas-vless/network-plan/etc/config/network"
 test ! -f "$test_root/device/etc/config/network"
 printf '%s\n' 'Install is idempotent; production secrets preserved; topology awaits explicit application'
+
+cat > "$test_root/fault-ctl" <<'EOF'
+#!/bin/sh
+case " $* " in
+ *' render '*)
+  case "$NIKAS_TEST_FAULT" in
+   fail) exit 42;;
+   term) kill -TERM "$PPID"; exit 0;;
+   kill) kill -KILL "$PPID"; exit 0;;
+  esac;;
+esac
+exec "$NIKAS_REAL_CTL" "$@"
+EOF
+chmod 755 "$test_root/fault-ctl"
+export NIKAS_REAL_CTL="$ctl"
+mkdir -p "$test_root/fault-bin"
+cat > "$test_root/fault-bin/cp" <<'EOF'
+#!/bin/sh
+for argument in "$@"; do
+ case "$NIKAS_TEST_FAULT:$argument" in
+  topology:*/etc/config/firewall.nikas-pending|final:*/installed-version.nikas-pending) exit 43;;
+ esac
+done
+exec /bin/cp "$@"
+EOF
+chmod 755 "$test_root/fault-bin/cp"
+for fault in fail term kill topology final; do
+ device="$test_root/$fault-device"
+ mkdir -p "$device/etc/config" "$device/etc/dropbear"
+ printf '%s\n' original-network > "$device/etc/config/network"
+ printf '%s\n' fixture-ssh-key > "$device/etc/dropbear/authorized_keys"
+ set --
+ if [ "$fault" = topology ]; then set -- --apply-network; fi
+ if TMPDIR="$test_root" PATH="$test_root/fault-bin:$sing_box_dir:$PATH" NIKAS_ROOT="$device" GATEWAYCTL="$test_root/fault-ctl" NIKAS_TEST_FAULT="$fault" sh "$test_root/release/scripts/install.sh" --config-dir "$test_root/input" --secrets-file "$test_root/input/secrets.json" --inventory "$test_root/input/inventory.json" "$@" > "$test_root/$fault.log" 2>&1; then
+  printf 'Failure injection unexpectedly succeeded: %s\n' "$fault"; exit 1
+ fi
+ if [ "$fault" = kill ]; then
+  test -f "$device/etc/nikas-vless-install.transaction"
+  # Recovery must happen before a new, deliberately rejected preflight.
+  if PATH="$sing_box_dir:$PATH" NIKAS_ROOT="$device" sh "$test_root/release/scripts/install.sh" --config-dir "$test_root/input" --secrets-file "$test_root/input/secrets.json" --inventory /missing > "$test_root/recovery.log" 2>&1; then exit 1; fi
+ fi
+ test "$(cat "$device/etc/config/network")" = original-network
+ test ! -f "$device/etc/init.d/nikas-sing-box"
+ test ! -f "$device/etc/nikas-vless/settings.json"
+ test ! -f "$device/usr/bin/gatewayd"
+ test ! -e "$device/etc/nikas-vless-install.transaction"
+ test -n "$(find "$device/etc/nikas-vless/backups" -name '*.tar.gz')"
+done
+printf '%s\n' 'Publication failure, final write failure, TERM and interrupted-install recovery restore the original state'

@@ -5,6 +5,8 @@ umask 077
 base=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 # shellcheck source=scripts/lib/common.sh
 . "$base/scripts/lib/common.sh"
+# shellcheck source=scripts/lib/services.sh
+. "$base/scripts/lib/services.sh"
 require_root
 system_root=${NIKAS_ROOT:-/}
 case "$system_root" in /*) ;; *) printf '%s\n' 'Absolute NIKAS_ROOT required' >&2; exit 1;; esac
@@ -31,9 +33,35 @@ ctl=${GATEWAYCTL:-$base/bin/gatewayctl}
 [ -x "$ctl" ] || { printf '%s\n' 'Release gatewayctl unavailable' >&2; exit 1; }
 work=$(mktemp -d)
 backup_path=
-cleanup_install() { rm -r "$work"; }
+rollback_needed=0
+transaction="$system_root/etc/nikas-vless-install.transaction"
+cleanup_install() {
+ install_status=$?
+ trap - EXIT HUP INT TERM
+ if [ "$rollback_needed" -eq 1 ]; then
+  printf '%s\n' 'Installation interrupted or failed; restoring local backup' >&2
+  if "$ctl" restore --system-root "$system_root" --backup "$backup_path" --yes; then
+   rm -f "$transaction"
+   sync
+  else
+   printf '%s\n' 'Automatic restore failed; transaction retained for recovery' >&2
+  fi
+  [ "$install_status" -ne 0 ] || install_status=1
+ fi
+ rm -r "$work"
+ exit "$install_status"
+}
 trap cleanup_install EXIT
 trap 'exit 130' HUP INT TERM
+# A durable marker survives SIGKILL/power loss. Recover before new preflight/writes.
+if [ -e "$transaction" ] || [ -L "$transaction" ]; then
+ [ -f "$transaction" ] && [ ! -L "$transaction" ] || { printf '%s\n' 'Unsafe installation journal' >&2; exit 1; }
+ IFS= read -r pending_backup < "$transaction"
+ case "$pending_backup" in "${system_root%/}"/etc/nikas-vless/backups/*.tar.gz) ;; *) printf '%s\n' 'Invalid installation journal' >&2; exit 1;; esac
+ "$ctl" restore --system-root "$system_root" --backup "$pending_backup" --yes
+ rm -f "$transaction"
+ sync
+fi
 cp "$config_dir/settings.json" "$work/settings.json"
 cp "$config_dir/hardware.json" "$work/hardware.json"
 if [ -f "$runtime/secrets.json" ]; then cp "$runtime/secrets.json" "$work/secrets.json"; else
@@ -56,10 +84,12 @@ fi
 backup_path=$("$ctl" backup --system-root "$system_root")
 printf 'Rollback: gatewayctl restore --system-root %s --backup %s --yes\n' "$system_root" "$backup_path"
 rollback_install() {
- printf '%s\n' 'Installation failed; restoring local backup' >&2
- "$ctl" restore --system-root "$system_root" --backup "$backup_path" --yes || :
  exit 1
 }
+rollback_needed=1
+printf '%s\n' "$backup_path" > "$work/install.transaction"
+atomic_copy "$work/install.transaction" "$transaction"
+sync
 # No live write occurs before preflight and the backup above.
 mkdir -p "$runtime/state" "$runtime/overrides"
 for name in settings hardware auth secrets; do
@@ -85,18 +115,11 @@ cp -Rp "$work/network-plan/." "$runtime/network-plan/" || rollback_install
 if [ "$apply_network" -eq 1 ]; then
  (cd "$runtime/network-plan" && find . -type f) | while IFS= read -r file; do atomic_copy "$runtime/network-plan/$file" "$system_root/$file" || exit 1; done || rollback_install
  if [ "$system_root" = / ]; then
-  uci set dropbear.@dropbear[0].PasswordAuth=off
-  uci set dropbear.@dropbear[0].RootPasswordAuth=off
-  uci commit dropbear
-  /etc/init.d/nikas-sing-box stop
-  /etc/init.d/network restart
-  /etc/init.d/firewall restart
-  /etc/init.d/dnsmasq restart
-  /etc/init.d/nikas-gatewayd enable
-  /etc/init.d/nikas-gatewayd restart
-  /etc/init.d/nikas-sing-box enable
-  if [ "$stage" = policy ]; then uci set nikas-vless.main.policy_enabled=1; uci commit nikas-vless; /etc/init.d/nikas-sing-box start; fi
+  apply_services /etc/init.d "$stage" || rollback_install
  fi
 fi
 atomic_copy "$base/VERSION" "$runtime/installed-version"
+rm -f "$transaction"
+sync
+rollback_needed=0
 printf '%s\n' 'Installed. DIRECT-first acceptance is required before enabling policy.'
