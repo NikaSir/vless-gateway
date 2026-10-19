@@ -6,3 +6,4 @@ for file in "$repo"/openwrt/etc/init.d/* "$repo"/openwrt/usr/libexec/* "$repo"/o
 done
 sh "$repo/tests/openwrt/test_fail_open.sh"
 sh "$repo/tests/openwrt/test_config_recovery.sh"
+python3 "$repo/tests/openwrt/test_dns_fixture.py"

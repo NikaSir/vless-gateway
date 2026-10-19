@@ -8,6 +8,8 @@ The 13 approved implementation tasks are complete. This is a bench candidate, no
 
 One independent whole-branch review covered gateway `aa4a0a9..3717935` and HA `532d45f..c54b72b`. It identified no Critical issues, seven Important issues and one Minor issue. All eight were accepted and addressed in one repair pass. No second independent review was requested; the fixes were verified with regression tests and the required CI gates.
 
+The state-severity issue was regraded Important by user effect: a real controller failure appeared active in the panel. There are no deferred minors.
+
 | Finding | Final behavior and evidence |
 |---|---|
 | Pinned sing-box health rejected the real version response | Health accepts the exact upstream `sing-box 1.12.22` representation. The HTTP regression failed with a deadline before the fix and passes afterwards. The Clash mock now matches [tagged upstream source](https://github.com/SagerNet/sing-box/blob/v1.12.22/experimental/clashapi/server.go). |

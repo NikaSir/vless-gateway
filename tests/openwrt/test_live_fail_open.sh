@@ -10,9 +10,12 @@ wrapper=
 fallback=
 dnsmasq_pid=
 cleanup() {
+ test_status=$?
  trap - EXIT HUP INT TERM
+ if [ "$test_status" -ne 0 ] && [ -f "$test_root/dnsmasq.log" ]; then cat "$test_root/dnsmasq.log"; fi
  for pid in "$wrapper" "$fallback" "$dnsmasq_pid"; do [ -z "$pid" ] || kill "$pid" 2>/dev/null || :; done
  rm -r "$test_root"
+ exit "$test_status"
 }
 trap cleanup EXIT HUP INT TERM
 ip link set lo up
@@ -20,6 +23,7 @@ mkdir -p "$test_root/bin" "$test_root/usr/libexec"
 cp "$repo/openwrt/usr/libexec/nikas-interception-cleanup" "$test_root/usr/libexec/"
 cat > "$test_root/bin/sing-box" <<'EOF'
 #!/bin/sh
+if [ "$1" = check ]; then exit 0; fi
 exec python3 "$NIKAS_DNS_FIXTURE" 127.0.0.2 192.0.2.10 "$NIKAS_CHILD_PID"
 EOF
 chmod 755 "$test_root/bin/sing-box" "$test_root/usr/libexec/nikas-interception-cleanup"
@@ -27,7 +31,7 @@ export NIKAS_DNS_FIXTURE="$repo/tests/openwrt/fixtures/dns-resolver.py"
 export NIKAS_CHILD_PID="$test_root/child.pid"
 python3 "$NIKAS_DNS_FIXTURE" 127.0.0.3 192.0.2.20 &
 fallback=$!
-dnsmasq --keep-in-foreground --user=root --no-resolv --no-hosts --cache-size=0 --strict-order --bind-interfaces --listen-address=127.0.0.1 --port=1053 --server=127.0.0.2 --server=127.0.0.3 --pid-file="$test_root/dnsmasq.pid" --log-facility="$test_root/dnsmasq.log" &
+dnsmasq --keep-in-foreground --user=root --no-resolv --no-hosts --cache-size=0 --strict-order --log-queries --bind-interfaces --listen-address=127.0.0.1 --port=1053 --server=127.0.0.2 --server=127.0.0.3 --pid-file="$test_root/dnsmasq.pid" --log-facility="$test_root/dnsmasq.log" &
 dnsmasq_pid=$!
 NIKAS_ROOT="$test_root" PATH="$test_root/bin:$PATH" sh "$repo/openwrt/usr/libexec/nikas-sing-box-run" &
 wrapper=$!
