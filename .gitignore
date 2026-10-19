@@ -27,3 +27,7 @@ __pycache__/
 .idea/
 .DS_Store
 Thumbs.db
+# Execution workspaces and build outputs
+.superpowers/
+dist/
+.tools/
