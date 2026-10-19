@@ -102,7 +102,8 @@ FriendlyWrt owns:
 - the upstream default route;
 - IPv4 forwarding;
 - firewall4/nftables policy;
-- DNS listener exposure to UXG-Max;
+- the always-on dnsmasq listener exposed to UXG-Max;
+- strict-order DNS fallback from the local sing-box resolver to the Keenetic-side resolver;
 - `procd` service lifecycle;
 - fail-open kernel forwarding when TUN interception is absent.
 
@@ -185,7 +186,7 @@ A failed download or validation never removes the current rules. Scheduled updat
 
 ### 5.2 DNS
 
-UXG-Max uses the NanoPi downstream address as its upstream DNS service.
+UXG-Max uses the NanoPi downstream address as its upstream DNS service. FriendlyWrt dnsmasq remains the always-on listener on port 53. In normal operation it forwards first, in strict order, to the sing-box DNS listener on loopback. Its second upstream is the Keenetic-side resolver and is used only when the local sing-box resolver is unavailable. Falling back to Keenetic DNS sets the gateway state to `degraded_fail_open`.
 
 - Russian domains use the direct resolver path learned/configured for the Keenetic side.
 - Other domains use the configured encrypted resolver through the selected VLESS outbound.
@@ -198,7 +199,7 @@ The transit interface does not advertise or forward IPv6 in v1. IPv6 packets are
 
 ## 6. Failover state machine
 
-The controller polls both VLESS outbounds every 15 seconds through the local sing-box API using two configurable HTTPS probe targets.
+The controller polls both VLESS outbounds every 15 seconds through the local sing-box API. The initial probe targets are `https://www.gstatic.com/generate_204` and `https://cp.cloudflare.com/generate_204`; they remain configurable non-secret settings.
 
 A VLESS route becomes unhealthy after both probe targets fail for three consecutive cycles. Recovery requires eight consecutive successful cycles. These defaults produce fast failure response and a two-minute recovery hold-down to prevent flapping.
 
@@ -216,7 +217,7 @@ A route change records UTC timestamp, previous route, new route, trigger and obs
 ### 6.2 Component failures
 
 - If `gatewayd` stops, sing-box keeps the last selected route; `procd` restarts the controller.
-- If sing-box stops, its interception rules must be removed and kernel forwarding remains DIRECT.
+- If sing-box stops, its interception rules must be removed, kernel forwarding remains DIRECT, and dnsmasq falls back in strict order to the Keenetic-side resolver.
 - If configuration reload fails, the previous generated configuration is restored.
 - If rule-set refresh fails, the previous active rule sets remain.
 - If NanoPi loses power or both data-path links fail, software fail-open is impossible. The documented recovery is the labeled physical cable bypass from Keenetic to UXG-Max WAN.
@@ -337,7 +338,7 @@ Before inline installation:
 - validate DIRECT, Germany and Netherlands separately;
 - validate split DNS with representative Russian and non-Russian domains;
 - verify the management port has no default route or forwarding path;
-- simulate controller stop, sing-box stop, invalid config and stale rule-set download;
+- simulate controller stop, sing-box stop, DNS fallback, invalid config and stale rule-set download;
 - restore from backup on the same device.
 
 ### 10.3 Inline acceptance
@@ -361,7 +362,7 @@ Acceptance requires:
 - Keenetic provider failover still creates working new sessions;
 - no NanoPi masquerade/SNAT rule exists;
 - controller restart does not interrupt the data plane;
-- sing-box failure produces DIRECT forwarding rather than a persistent black hole;
+- sing-box failure produces DIRECT forwarding and working Keenetic-side DNS rather than a persistent black hole;
 - invalid configuration and rule sets are rejected;
 - API freshness, status and traffic values remain factual;
 - logs, diagnostics and artifacts contain no production secrets;
