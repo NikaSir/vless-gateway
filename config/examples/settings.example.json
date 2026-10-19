@@ -1,0 +1,19 @@
+{
+  "transit_subnet": "192.168.2.0/24",
+  "management_address": "192.168.10.5",
+  "management_subnet": "192.168.10.0/24",
+  "management_listen": "192.168.10.5:9080",
+  "ha_host": "192.168.10.10",
+  "admin_subnet": "192.168.10.0/24",
+  "existing_networks": ["192.168.1.0/24"],
+  "direct_resolver": "192.168.1.1",
+  "encrypted_resolver": "8.8.8.8",
+  "encrypted_server_name": "dns.google",
+  "clash_url": "http://127.0.0.1:9090",
+  "probe_urls": ["https://www.gstatic.com/generate_204", "https://cp.cloudflare.com/generate_204"],
+  "interval_seconds": 15,
+  "timeout_seconds": 5,
+  "bootstrap_successes": 2,
+  "failure_cycles": 3,
+  "recovery_cycles": 8
+}
