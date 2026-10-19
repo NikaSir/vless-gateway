@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -34,7 +35,8 @@ func ValidateTopology(s Settings, h Hardware) error {
 		return errors.New("management_address: outside subnet")
 	}
 	host, port, e := net.SplitHostPort(s.ManagementListen)
-	if e != nil || host != s.ManagementAddress || port == "" {
+	portNumber, portErr := strconv.Atoi(port)
+	if e != nil || host != s.ManagementAddress || portErr != nil || portNumber < 1 || portNumber > 65535 {
 		return errors.New("management_listen: must bind management address")
 	}
 	ha, e := netip.ParseAddr(s.HAHost)

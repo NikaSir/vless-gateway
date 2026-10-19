@@ -2,13 +2,17 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/NikaSir/vless-gateway/internal/backup"
 	"github.com/NikaSir/vless-gateway/internal/buildinfo"
 	"github.com/NikaSir/vless-gateway/internal/config"
 	"github.com/NikaSir/vless-gateway/internal/control"
+	"github.com/NikaSir/vless-gateway/internal/provision"
 	"github.com/NikaSir/vless-gateway/internal/rules"
 	"github.com/NikaSir/vless-gateway/internal/singbox"
 	"github.com/NikaSir/vless-gateway/internal/state"
@@ -63,14 +67,82 @@ func RunCLI(ctx context.Context, args []string, out io.Writer, uid int) error {
 		default:
 			return errors.New("invalid mode")
 		}
-	case "validate", "render", "reload", "rules-update", "backup", "restore", "doctor":
+	case "validate", "render", "reload", "rules-update", "backup", "restore", "doctor", "preflight", "init-auth", "validate-input":
 		if uid != 0 {
 			return errors.New("root required")
 		}
 	default:
 		return errors.New("unknown command")
 	}
-	if command == "backup" || command == "restore" || command == "doctor" {
+	if command == "preflight" {
+		pf := flag.NewFlagSet("preflight", flag.ContinueOnError)
+		pf.SetOutput(io.Discard)
+		inventory := pf.String("inventory", "", "")
+		output := pf.String("output", "", "")
+		owned := pf.Bool("owned", false, "")
+		if pf.Parse(a[1:]) != nil {
+			return errors.New("invalid preflight options")
+		}
+		var s config.Settings
+		var h config.Hardware
+		if config.ReadJSON(filepath.Join(root, "settings.json"), &s) != nil || config.ReadJSON(filepath.Join(root, "hardware.json"), &h) != nil {
+			return errors.New("preflight settings unavailable")
+		}
+		var i provision.Inventory
+		var err error
+		if *inventory != "" {
+			err = config.ReadJSON(*inventory, &i)
+		} else {
+			i, err = provision.Inspect(ctx)
+		}
+		if err != nil {
+			return err
+		}
+		files, err := provision.Build(s, h, i, *owned)
+		if err != nil {
+			return err
+		}
+		if *output != "" {
+			for path, b := range files {
+				if err = state.AtomicWrite(filepath.Join(*output, path), b, 0600); err != nil {
+					return err
+				}
+			}
+		}
+		_, err = fmt.Fprintln(out, "preflight validated")
+		return err
+	}
+	if command == "validate-input" {
+		r, e := config.Load(root)
+		if e != nil {
+			return e
+		}
+		return config.Validate(r)
+	}
+	if command == "init-auth" {
+		path := filepath.Join(root, "auth.json")
+		if _, err := os.Lstat(path); err == nil {
+			return errors.New("auth already exists")
+		}
+		var a, b [32]byte
+		if _, err := rand.Read(a[:]); err != nil {
+			return errors.New("random generator failed")
+		}
+		if _, err := rand.Read(b[:]); err != nil {
+			return errors.New("random generator failed")
+		}
+		data, _ := json.Marshal(config.Auth{APIToken: hex.EncodeToString(a[:]), ClashToken: hex.EncodeToString(b[:])})
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if err != nil {
+			return errors.New("auth creation failed")
+		}
+		defer f.Close()
+		if _, err = f.Write(data); err != nil {
+			return errors.New("auth write failed")
+		}
+		return f.Sync()
+	}
+	if command == "backup" || command == "restore" {
 		if command == "restore" {
 			yes := false
 			backup := false
@@ -86,12 +158,53 @@ func RunCLI(ctx context.Context, args []string, out io.Writer, uid int) error {
 				return errors.New("restore requires --backup and --yes")
 			}
 		}
-		cmd := exec.CommandContext(ctx, "/usr/libexec/nikas-vless/"+command+".sh", a[1:]...)
-		cmd.Stdout = out
-		if cmd.Run() != nil {
-			return errors.New("local maintenance failed")
+		bf := flag.NewFlagSet(command, flag.ContinueOnError)
+		bf.SetOutput(io.Discard)
+		systemRoot := bf.String("system-root", "/", "")
+		archive := bf.String("backup", "", "")
+		yes := bf.Bool("yes", false, "")
+		if bf.Parse(a[1:]) != nil {
+			return errors.New("invalid backup options")
 		}
-		return nil
+		if command == "backup" {
+			path, e := backup.Create(*systemRoot, filepath.Join(*systemRoot, "etc/nikas-vless/backups"))
+			if e != nil {
+				return e
+			}
+			_, e = fmt.Fprintln(out, path)
+			return e
+		}
+		if !*yes || *archive == "" {
+			return errors.New("restore requires --backup and --yes")
+		}
+		if *systemRoot == "/" {
+			i, e := provision.Inspect(ctx)
+			if e != nil || i.Board != "friendlyarm,nanopi-r5s" || i.Version != "24.10.2" {
+				return errors.New("restore device verification failed")
+			}
+			_ = exec.CommandContext(ctx, "/etc/init.d/nikas-sing-box", "stop").Run()
+			_ = exec.CommandContext(ctx, "/etc/init.d/nikas-gatewayd", "stop").Run()
+		}
+		if e := backup.Restore(*systemRoot, *archive); e != nil {
+			return e
+		}
+		if *systemRoot == "/" {
+			_ = exec.CommandContext(ctx, "uci", "set", "nikas-vless.main.policy_enabled=0").Run()
+			_ = exec.CommandContext(ctx, "uci", "commit", "nikas-vless").Run()
+			_ = exec.CommandContext(ctx, "/etc/init.d/network", "restart").Run()
+			_ = exec.CommandContext(ctx, "/etc/init.d/firewall", "restart").Run()
+			_ = exec.CommandContext(ctx, "/etc/init.d/dnsmasq", "restart").Run()
+			_ = exec.CommandContext(ctx, "/etc/init.d/nikas-gatewayd", "restart").Run()
+		}
+		_, e := fmt.Fprintln(out, "restored; DIRECT stage required")
+		return e
+	}
+	if command == "doctor" {
+		resp, e := control.Call(ctx, SocketPath(root), control.Request{Command: "diagnostics"})
+		if e != nil {
+			return e
+		}
+		return json.NewEncoder(out).Encode(resp.Data)
 	}
 	if command == "render" || command == "validate" || *offline {
 		switch command {

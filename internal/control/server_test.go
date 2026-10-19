@@ -31,8 +31,11 @@ func TestControlSocketPermissionProtocolAndStaleGuard(t *testing.T) {
 		return Response{OK: true, Data: map[string]string{"mode": r.Mode}}
 	})
 	r, e := Call(ctx, path, Request{Command: "set-mode", Mode: "direct"})
-	if e != nil || !r.OK {
+	if os.Geteuid() == 0 && (e != nil || !r.OK) {
 		t.Fatal(r, e)
+	}
+	if os.Geteuid() != 0 && e == nil {
+		t.Fatal("non-root peer accepted")
 	}
 	if _, e = Listen(path); e == nil {
 		t.Fatal("active socket replaced")
