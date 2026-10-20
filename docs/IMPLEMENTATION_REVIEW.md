@@ -80,3 +80,12 @@ The next independent review found five further defects. The local repair keeps c
 Local verification: `make verify`, pinned configuration validation, JSON contracts, ShellCheck, shell lifecycle/preflight/backup/installer, secret scan, HA unittest/pytest, deterministic frontend and pinned standards checks. HA consumes corrected source observations without production mapping/UI changes.
 
 Local limitations remain explicit: AF_UNIX and sing-box runtime startup return EPERM, and network namespace creation is denied. The explicit `NIKAS_ALLOW_SOCKET_SKIP=1` only permits these local socket/runtime cases; required GitHub CI does not set it. Real pinned selector restarts and root socket/kernel/DNS gates must pass in CI. Repository checks do not establish NanoPi, FriendlyWrt or inline/soak acceptance.
+
+
+### Final review boundary repair
+
+The fresh final review found two further Important boundary cases. An outbound Selector mutation can apply even when its response times out or is cancelled. The controller now retains the attempted transition before dispatch, keeps public history unchanged on error, and records it once only after a later matching observation. Response-lost, cancellation, repeat-poll and genuine rejection regressions cover this distinction.
+
+Config rollback now separates durable disk restoration from live acknowledgement. Live activation rollback and recovery retry retain the transaction marker until both restart and health acknowledge the previous runtime. Failed restart/health reports failure and preserves known-good bytes for the next recovery attempt. Ordinary disk-only startup recovery still clears after restoring bytes (or removing an unconfirmed first config). Regressions cover failed restart, failed health, acknowledged rollback, failed recovery retries, successful retry and boot recovery.
+
+The first repair's published gateway `3874fc7b` and HA `86fc53bf` passed their required CI gates. Those results establish only those exact commits. The final gateway repair requires a new CI run; it does not change HA fixtures or consumer semantics. Local full gateway verification retains the same explicitly documented runtime EPERM limitations.

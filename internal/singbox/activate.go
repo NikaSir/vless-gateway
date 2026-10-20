@@ -22,12 +22,8 @@ func Activate(ctx context.Context, target string, data []byte, c Checker, r Relo
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	if recovered, e := Recover(target); e != nil {
+	if _, e := recoverRuntime(ctx, target, r); e != nil {
 		return e
-	} else if recovered {
-		if r.Reload(ctx) != nil || r.Healthy(ctx) != nil {
-			return errors.New("recovered config health not confirmed")
-		}
 	}
 	dir := filepath.Dir(target)
 	if os.MkdirAll(dir, 0700) != nil {
@@ -68,10 +64,9 @@ func Activate(ctx context.Context, target string, data []byte, c Checker, r Relo
 	}
 	rollbackCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if _, e := Recover(target); e != nil {
-		return e
+	if _, e := recoverRuntime(rollbackCtx, target, r); e != nil {
+		return errors.New("config activation failed; " + e.Error())
 	}
-	_ = r.Reload(rollbackCtx)
 	return errors.New("config activation failed; previous generation restored")
 }
 
@@ -80,9 +75,39 @@ type configTransaction struct {
 	HadOld bool `json:"had_old"`
 }
 
-// Recover restores a published but unconfirmed configuration before startup or retry.
-// The journal remains until the previous bytes have been durably restored.
+// Recover performs disk-only recovery before ordinary process startup.
+// Live recovery uses recoverRuntime, retaining its journal until acknowledgement.
 func Recover(target string) (bool, error) {
+	recovered, e := restorePendingConfig(target)
+	if e != nil || !recovered {
+		return recovered, e
+	}
+	if e := clearTransaction(target); e != nil {
+		return false, e
+	}
+	return true, nil
+}
+
+func recoverRuntime(ctx context.Context, target string, r Reloader) (bool, error) {
+	recovered, e := restorePendingConfig(target)
+	if e != nil || !recovered {
+		return recovered, e
+	}
+	if r.Reload(ctx) != nil {
+		return false, errors.New("config rollback reload failed")
+	}
+	if r.Healthy(ctx) != nil {
+		return false, errors.New("config rollback health not confirmed")
+	}
+	if e := clearTransaction(target); e != nil {
+		return false, e
+	}
+	return true, nil
+}
+
+// Restore durable bytes without committing recovery. This protects .previous
+// across failed live rollback attempts and recovery retries.
+func restorePendingConfig(target string) (bool, error) {
 	b, e := os.ReadFile(target + ".transaction")
 	if os.IsNotExist(e) {
 		return false, nil
@@ -102,11 +127,13 @@ func Recover(target string) (bool, error) {
 		if state.AtomicWrite(target, old, 0600) != nil {
 			return false, errors.New("config recovery write failed")
 		}
-	} else if e := os.Remove(target); e != nil && !os.IsNotExist(e) {
-		return false, errors.New("config recovery remove failed")
-	}
-	if e := clearTransaction(target); e != nil {
-		return false, e
+	} else {
+		if e := os.Remove(target); e != nil && !os.IsNotExist(e) {
+			return false, errors.New("config recovery remove failed")
+		}
+		if e := syncConfigDirectory(target); e != nil {
+			return false, e
+		}
 	}
 	return true, nil
 }
@@ -115,6 +142,10 @@ func clearTransaction(target string) error {
 	if e := os.Remove(target + ".transaction"); e != nil && !os.IsNotExist(e) {
 		return errors.New("config journal removal failed")
 	}
+	return syncConfigDirectory(target)
+}
+
+func syncConfigDirectory(target string) error {
 	dir, e := os.Open(filepath.Dir(target))
 	if e != nil {
 		return errors.New("config directory unavailable")

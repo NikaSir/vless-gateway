@@ -172,15 +172,17 @@ func (s *Service) reconcile(ctx context.Context) error {
 		}
 	}
 	if desired != actual {
+		// A failed response does not prove that the remote mutation was rejected.
+		// Keep intent private until a later successful observation acknowledges it.
+		s.pendingChange = &model.RouteChange{Previous: actual, Current: desired, Trigger: "selector_confirmed"}
+		if decision := s.m.Snapshot().LastChange; decision != nil {
+			s.pendingChange.Probes = decision.Probes
+		}
 		if s.sel.Select(ctx, "vless-active", routeTag(desired)) != nil {
 			s.s.ActiveRoute = model.Unavailable[model.Route]("selector_unconfirmed")
 			s.s.DNSRoute = model.Unavailable[model.Route]("selector_unconfirmed")
 			s.s.State = model.ControlError
 			return errors.New("selector change failed")
-		}
-		s.pendingChange = &model.RouteChange{Previous: actual, Current: desired, Trigger: "selector_confirmed"}
-		if decision := s.m.Snapshot().LastChange; decision != nil {
-			s.pendingChange.Probes = decision.Probes
 		}
 		confirmed, e := s.sel.Selected(ctx, "vless-active")
 		if e != nil || confirmed != routeTag(desired) {
