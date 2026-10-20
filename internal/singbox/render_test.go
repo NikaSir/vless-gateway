@@ -47,3 +47,18 @@ func TestRenderPolicyAndIsolation(t *testing.T) {
 		_ = os.WriteFile(path, b, 0600)
 	}
 }
+
+func TestColdStartSelectorCannotRestorePersistentChoice(t *testing.T) {
+	b, e := Render(config.Runtime{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	var d Document
+	if e = json.Unmarshal(b, &d); e != nil {
+		t.Fatal(e)
+	}
+	// sing-box 1.12.22 loads stored selector choice in preference to default when cache_file is enabled.
+	if d.Outbounds[0].Default != "direct" || d.Experimental.CacheFile.Enabled {
+		t.Fatal("cold start may restore a stale VLESS choice", string(b))
+	}
+}

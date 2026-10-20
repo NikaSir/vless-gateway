@@ -45,7 +45,7 @@ These are the execution ledger rulings, including the reason and cost if wrong. 
 2. Skill helper scripts were read from the installed plugin cache after resource URI lookup failed. Same installed skill; no product impact.
 3. Human runbooks receive manual review instead of grep tests, following current test guidance. Cost: a documentation omission might escape review.
 4. gatewayd never reads VLESS material: API/Clash authentication is separate from renderer-only profiles. Reason: binding credential boundary. Cost: configuration schema migration.
-5. Preserve a confirmed existing Selector during controller bootstrap. Reason: controller restart must retain the data plane. Cost: fail-open can wait up to three cycles; if selection is no longer observable, current route is unavailable.
+5. Preserve a confirmed existing Selector during controller bootstrap. Reason: controller restart must retain the data plane. Cost: fail-open can wait up to the configured failure threshold (three cycles by default); if selection is no longer observable, current route is unavailable.
 6. Use pinned jsonschema 4.25.1 through check_contracts.py instead of the missing check_jsonschema CLI. Same JSON Schema validation; no relevant CLI parity cost.
 7. Permit an explicit local AF_UNIX test skip only in this restricted environment. Required CI runs the real root socket test without the skip.
 8. Pin official GitHub release asset digests because sing-box 1.12.22 has no checksum text asset. Cost: a wrong pin rejects the download instead of executing unverified bytes.
@@ -63,3 +63,20 @@ These are the execution ledger rulings, including the reason and cost if wrong. 
 20. Rename the measured HA traffic total rather than invent VLESS-only accounting. Cost: protected-traffic accounting remains unavailable until supported by a separate measured contract.
 
 No merge, tag, production deployment or remote message to another person is authorized by this record.
+
+
+## Beta001 follow-up review repairs — 2026-10-20
+
+The next independent review found five further defects. The local repair keeps candidate/API versions and default thresholds unchanged; no device or live HA acceptance is claimed.
+
+| Finding | Repair and behavioral evidence |
+|---|---|
+| Recovery re-entered bootstrap and retained a failed VLESS route while the other path flapped | Bootstrap preservation is latched to the initial phase. Readiness honors the configured selected-path failure threshold. DE/NL regressions cover failure thresholds 2, 3 and 5 and controller-only restart. |
+| Ordinary startup ignored an unfinished rule transaction; rollback discarded evidence despite failure | Root-only `recover-rules` restores disk state before startup validation, under the updater lock. Transaction restarts preserve their candidate. Interrupted-publication, failed reload/switch, corrupt journal and startup-order tests check retained evidence and factual errors. |
+| Persistent selector cache could override cold-start DIRECT | Generated configuration disables the unnecessary cache. Structural regression failed against the former configuration. A pinned 1.12.22 restart characterization seeds each DE/NL cached choice, verifies persistence, then requires generated settings to start DIRECT. |
+| Tunnel telemetry equated successful API control with a working VLESS path | Confirmed DIRECT reports false; selected VLESS reports its measured path health; unconfirmed selection or unmeasured health is unavailable. Gateway-produced snapshots are shared unchanged with HA role and rendered-panel tests. |
+| Desired changes overwrote confirmed last-change metadata | Polling/mode decisions preserve confirmed LastChange. Restore retains confirmed history without restoring current observations. Missing acknowledgement keeps prior history; later acknowledgement records one change at observation time, with repeated polls adding no duplicates. |
+
+Local verification: `make verify`, pinned configuration validation, JSON contracts, ShellCheck, shell lifecycle/preflight/backup/installer, secret scan, HA unittest/pytest, deterministic frontend and pinned standards checks. HA consumes corrected source observations without production mapping/UI changes.
+
+Local limitations remain explicit: AF_UNIX and sing-box runtime startup return EPERM, and network namespace creation is denied. The explicit `NIKAS_ALLOW_SOCKET_SKIP=1` only permits these local socket/runtime cases; required GitHub CI does not set it. Real pinned selector restarts and root socket/kernel/DNS gates must pass in CI. Repository checks do not establish NanoPi, FriendlyWrt or inline/soak acceptance.

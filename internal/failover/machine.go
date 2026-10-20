@@ -129,3 +129,19 @@ func (m *Machine) Snapshot() model.FailoverSnapshot {
 	}
 	return s
 }
+
+// BootstrapReady permits reconciliation once probes qualify a route or disqualify
+// the route already selected by a running sing-box. The controller latches this
+// readiness so later failures cannot re-enter startup preservation.
+func (m *Machine) BootstrapReady(selected model.Route) bool {
+	if m.s.Mode == model.ModeDirect || m.de.health.Healthy || m.nl.health.Healthy {
+		return true
+	}
+	switch selected {
+	case model.RouteGermany:
+		return m.de.health.Failures >= m.cfg.FailureCycles
+	case model.RouteNetherlands:
+		return m.nl.health.Failures >= m.cfg.FailureCycles
+	}
+	return false
+}

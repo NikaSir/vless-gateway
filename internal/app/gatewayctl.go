@@ -67,7 +67,7 @@ func RunCLI(ctx context.Context, args []string, out io.Writer, uid int) error {
 		default:
 			return errors.New("invalid mode")
 		}
-	case "validate", "render", "reload", "rules-update", "backup", "restore", "doctor", "preflight", "init-auth", "validate-input", "recover-config":
+	case "validate", "render", "reload", "rules-update", "backup", "restore", "doctor", "preflight", "init-auth", "validate-input", "recover-config", "recover-rules":
 		if uid != 0 {
 			return errors.New("root required")
 		}
@@ -118,6 +118,9 @@ func RunCLI(ctx context.Context, args []string, out io.Writer, uid int) error {
 			return e
 		}
 		return config.Validate(r)
+	}
+	if command == "recover-rules" {
+		return rules.RecoverDisk(filepath.Join(root, "rules"))
 	}
 	if command == "recover-config" {
 		_, err := singbox.Recover(filepath.Join(root, "config.json"))

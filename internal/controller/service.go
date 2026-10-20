@@ -31,14 +31,16 @@ type RealClock struct{}
 func (RealClock) Now() time.Time { return time.Now().UTC() }
 
 type Service struct {
-	mu    sync.Mutex
-	cfg   Config
-	p     Prober
-	sel   Selector
-	m     *failover.Machine
-	sink  SnapshotSink
-	clock Clock
-	s     model.StatusSnapshot
+	mu                sync.Mutex
+	cfg               Config
+	p                 Prober
+	sel               Selector
+	m                 *failover.Machine
+	sink              SnapshotSink
+	clock             Clock
+	s                 model.StatusSnapshot
+	bootstrapComplete bool
+	pendingChange     *model.RouteChange
 }
 
 func New(c Config, p Prober, sel Selector, m *failover.Machine, sink SnapshotSink, clock Clock) (*Service, error) {
@@ -101,9 +103,8 @@ func (s *Service) PollOnce(ctx context.Context) (model.StatusSnapshot, error) {
 	if !d.Accepted {
 		return s.clone(), errors.New(d.Error)
 	}
-	s.s.FailoverSnapshot = d.Snapshot
+	s.setDecision(d.Snapshot)
 	err := s.reconcile(ctx)
-	s.s.Tunnel = model.Available(err == nil)
 	if s.sink != nil {
 		if e := s.sink.Save(ctx, s.s); e != nil && err == nil {
 			err = errors.New("state persistence failed")
@@ -111,7 +112,37 @@ func (s *Service) PollOnce(ctx context.Context) (model.StatusSnapshot, error) {
 	}
 	return s.clone(), err
 }
+
+// Machine LastChange describes intent; the public snapshot retains only acknowledged changes.
+func (s *Service) setDecision(v model.FailoverSnapshot) {
+	confirmed := s.s.LastChange
+	s.s.FailoverSnapshot = v
+	s.s.LastChange = confirmed
+}
+func (s *Service) updateTunnel() {
+	if !s.s.ActiveRoute.Available || s.s.ActiveRoute.Value == nil {
+		s.s.Tunnel = model.Unavailable[bool]("selector_unconfirmed")
+		return
+	}
+	switch *s.s.ActiveRoute.Value {
+	case model.RouteDirect:
+		s.s.Tunnel = model.Available(false)
+	case model.RouteGermany:
+		if s.s.Germany.Available {
+			s.s.Tunnel = model.Available(s.s.Germany.Healthy)
+		} else {
+			s.s.Tunnel = model.Unavailable[bool]("not_measured")
+		}
+	case model.RouteNetherlands:
+		if s.s.Netherlands.Available {
+			s.s.Tunnel = model.Available(s.s.Netherlands.Healthy)
+		} else {
+			s.s.Tunnel = model.Unavailable[bool]("not_measured")
+		}
+	}
+}
 func (s *Service) reconcile(ctx context.Context) error {
+	defer s.updateTunnel()
 	selected, e := s.sel.Selected(ctx, "vless-active")
 	if e != nil {
 		s.s.ActiveRoute = model.Unavailable[model.Route]("selector_unavailable")
@@ -127,12 +158,18 @@ func (s *Service) reconcile(ctx context.Context) error {
 		return errors.New("invalid selector state")
 	}
 	s.s.ActiveRoute = model.Available(actual)
+	s.s.DNSRoute = s.s.ActiveRoute
+	if s.pendingChange != nil && s.pendingChange.Current == actual {
+		s.confirmPendingChange()
+	}
 	desired := s.s.DesiredRoute
 	// Restarting the controller alone does not reset an already selected route.
-	initialized := s.s.Germany.Healthy || s.s.Netherlands.Healthy || s.s.Germany.Failures >= 3 && s.s.Netherlands.Failures >= 3 || s.s.Mode == model.ModeDirect
-	if !initialized && actual != model.RouteDirect {
-		s.s.State = model.Starting
-		return nil
+	if !s.bootstrapComplete {
+		s.bootstrapComplete = actual == model.RouteDirect || s.m.BootstrapReady(actual)
+		if !s.bootstrapComplete {
+			s.s.State = model.Starting
+			return nil
+		}
 	}
 	if desired != actual {
 		if s.sel.Select(ctx, "vless-active", routeTag(desired)) != nil {
@@ -141,6 +178,10 @@ func (s *Service) reconcile(ctx context.Context) error {
 			s.s.State = model.ControlError
 			return errors.New("selector change failed")
 		}
+		s.pendingChange = &model.RouteChange{Previous: actual, Current: desired, Trigger: "selector_confirmed"}
+		if decision := s.m.Snapshot().LastChange; decision != nil {
+			s.pendingChange.Probes = decision.Probes
+		}
 		confirmed, e := s.sel.Selected(ctx, "vless-active")
 		if e != nil || confirmed != routeTag(desired) {
 			s.s.ActiveRoute = model.Unavailable[model.Route]("selector_unconfirmed")
@@ -148,19 +189,22 @@ func (s *Service) reconcile(ctx context.Context) error {
 			s.s.State = model.ControlError
 			return errors.New("selector acknowledgement missing")
 		}
-		change := model.RouteChange{At: s.clock.Now().UTC(), Previous: actual, Current: desired, Trigger: "selector_confirmed"}
-		if s.s.LastChange != nil {
-			change.Probes = s.s.LastChange.Probes
-		}
-		s.s.LastChange = &change
-		s.s.History = append(s.s.History, change)
-		if len(s.s.History) > 128 {
-			s.s.History = s.s.History[len(s.s.History)-128:]
-		}
+		s.confirmPendingChange()
 		s.s.ActiveRoute = model.Available(desired)
 	}
 	s.s.DNSRoute = s.s.ActiveRoute
 	return nil
+}
+func (s *Service) confirmPendingChange() {
+	change := *s.pendingChange
+	// This is observation time, including a delayed acknowledgement, not an inferred switch time.
+	change.At = s.clock.Now().UTC()
+	s.s.LastChange = &change
+	s.s.History = append(s.s.History, change)
+	if len(s.s.History) > 128 {
+		s.s.History = s.s.History[len(s.s.History)-128:]
+	}
+	s.pendingChange = nil
 }
 func (s *Service) SetMode(ctx context.Context, mode model.Mode) error {
 	s.mu.Lock()
@@ -168,7 +212,7 @@ func (s *Service) SetMode(ctx context.Context, mode model.Mode) error {
 	if err := s.m.SetMode(mode); err != nil {
 		return err
 	}
-	s.s.FailoverSnapshot = s.m.Snapshot()
+	s.setDecision(s.m.Snapshot())
 	e := s.reconcile(ctx)
 	if e == nil && s.sink != nil {
 		e = s.sink.Save(ctx, s.s)
@@ -179,7 +223,16 @@ func (s *Service) Restore(v model.StatusSnapshot) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_ = s.m.SetMode(v.Mode)
+	s.setDecision(s.m.Snapshot())
 	s.s.History = append([]model.RouteChange(nil), v.History...)
+	s.s.LastChange = nil
+	if v.LastChange != nil && v.LastChange.Trigger == "selector_confirmed" {
+		change := *v.LastChange
+		s.s.LastChange = &change
+	} else if n := len(s.s.History); n > 0 && s.s.History[n-1].Trigger == "selector_confirmed" {
+		change := s.s.History[n-1]
+		s.s.LastChange = &change
+	}
 }
 func (s *Service) clone() model.StatusSnapshot {
 	var v model.StatusSnapshot

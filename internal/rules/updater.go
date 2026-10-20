@@ -113,20 +113,8 @@ func (u *Updater) Update(ctx context.Context) (Manifest, error) {
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	jp := filepath.Join(u.Root, "transaction.json")
-	if b, e := os.ReadFile(jp); e == nil {
-		var j journal
-		if json.Unmarshal(b, &j) != nil || !safeGeneration(j.Previous) {
-			return m, errors.New("rule recovery journal corrupt")
-		}
-		if switchLink(u.Root, j.Previous) != nil {
-			return m, errors.New("rule recovery failed")
-		}
-		if u.Activator.ReloadAndCheck(ctx) != nil {
-			return m, errors.New("rule recovery reload failed")
-		}
-		_ = os.Remove(jp)
-	} else if !os.IsNotExist(e) {
-		return m, errors.New("rule recovery journal unreadable")
+	if e := recoverPending(u.Root, func() error { return u.Activator.ReloadAndCheck(ctx) }); e != nil {
+		return m, e
 	}
 	previous, e := os.Readlink(filepath.Join(u.Root, "current"))
 	if e != nil || !safeGeneration(previous) {
@@ -202,14 +190,22 @@ func (u *Updater) Update(ctx context.Context) (Manifest, error) {
 		return m, errors.New("rule switch failed")
 	}
 	if u.Activator.ReloadAndCheck(ctx) != nil {
-		_ = switchLink(u.Root, previous)
+		if switchLink(u.Root, previous) != nil {
+			return m, errors.New("rule activation failed; rollback switch failed")
+		}
 		rc, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		_ = u.Activator.ReloadAndCheck(rc)
-		_ = os.Remove(jp)
+		if u.Activator.ReloadAndCheck(rc) != nil {
+			return m, errors.New("rule activation failed; rollback reload failed")
+		}
+		if e := clearJournal(u.Root); e != nil {
+			return m, e
+		}
 		return m, errors.New("rule activation failed; previous restored")
 	}
-	_ = os.Remove(jp)
+	if e := clearJournal(u.Root); e != nil {
+		return m, e
+	}
 	u.collect(next, previous)
 	return m, nil
 }
@@ -242,4 +238,61 @@ func (u *Updater) collect(current, previous string) {
 			_ = os.RemoveAll(filepath.Join(u.Root, rel))
 		}
 	}
+}
+
+// RecoverDisk is used only before ordinary sing-box startup. It does not reload
+// a live process. A transaction restart skips this operation until acknowledgement.
+func RecoverDisk(root string) error {
+	lock, e := os.OpenFile(filepath.Join(root, ".update.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if os.IsNotExist(e) {
+		return nil
+	}
+	if e != nil {
+		return errors.New("rule recovery lock unavailable")
+	}
+	defer lock.Close()
+	if syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+		return errors.New("rule update already active")
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	return recoverPending(root, nil)
+}
+func recoverPending(root string, reload func() error) error {
+	b, e := os.ReadFile(filepath.Join(root, "transaction.json"))
+	if os.IsNotExist(e) {
+		return nil
+	}
+	if e != nil {
+		return errors.New("rule recovery journal unreadable")
+	}
+	var j journal
+	if json.Unmarshal(b, &j) != nil || !safeGeneration(j.Previous) || !safeGeneration(j.Next) {
+		return errors.New("rule recovery journal corrupt")
+	}
+	prior, e := os.ReadFile(filepath.Join(root, j.Previous, "manifest.json"))
+	var m Manifest
+	if e != nil || json.Unmarshal(prior, &m) != nil || m.Generation == "" {
+		return errors.New("rule recovery generation unavailable")
+	}
+	if switchLink(root, j.Previous) != nil {
+		return errors.New("rule recovery failed")
+	}
+	if reload != nil && reload() != nil {
+		return errors.New("rule recovery reload failed")
+	}
+	return clearJournal(root)
+}
+func clearJournal(root string) error {
+	if e := os.Remove(filepath.Join(root, "transaction.json")); e != nil {
+		return errors.New("rule journal cleanup failed")
+	}
+	dir, e := os.Open(root)
+	if e != nil {
+		return errors.New("rule journal cleanup sync failed")
+	}
+	defer dir.Close()
+	if dir.Sync() != nil {
+		return errors.New("rule journal cleanup sync failed")
+	}
+	return nil
 }

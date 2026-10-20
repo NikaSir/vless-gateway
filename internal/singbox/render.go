@@ -22,7 +22,7 @@ func Render(r config.Runtime) ([]byte, error) {
 		Inbounds:     []Inbound{{Type: "tun", Tag: "tun-in", InterfaceName: "nikas-tun0", Address: []string{"172.31.255.1/30"}, AutoRoute: true, AutoRedirect: true, IncludeInterface: []string{r.Hardware.Interface(config.Downstream)}, IPRoute2TableIndex: 20220, IPRoute2RuleIndex: 9020, FallbackIndex: 32760, InputMark: "0x2023", OutputMark: "0x2024", MTU: 1500, Stack: "system"}, {Type: "direct", Tag: "dns-in", Listen: "127.0.0.1", ListenPort: 5353}},
 		Outbounds:    []Outbound{{Type: "selector", Tag: "vless-active", Outbounds: []string{"vless-de", "vless-nl", "direct"}, Default: "direct"}, {Type: "direct", Tag: "direct"}},
 		DNS:          DNS{Servers: []DNSServer{{Type: "udp", Tag: "dns-direct", Server: s.DirectResolver, Detour: "direct"}, {Type: "tls", Tag: "dns-encrypted", Server: s.EncryptedResolver, ServerPort: 853, Detour: "vless-active", TLS: &TLS{Enabled: true, ServerName: s.EncryptedServerName}}}, Rules: []DNSRule{{RuleSet: []string{"force-direct"}, Action: "route", Server: "dns-direct"}, {RuleSet: []string{"force-vless"}, Action: "route", Server: "dns-encrypted"}, {RuleSet: []string{"geosite-ru"}, Action: "route", Server: "dns-direct"}}, Final: "dns-encrypted", Strategy: "ipv4_only", ReverseMapping: true},
-		Experimental: Experimental{ClashAPI: ClashAPI{addr, r.Auth.ClashToken}, CacheFile: CacheFile{true, filepath.Join(root, "state", "sing-box.db")}},
+		Experimental: Experimental{ClashAPI: ClashAPI{addr, r.Auth.ClashToken}, CacheFile: CacheFile{Enabled: false}},
 		Route:        Route{AutoDetectInterface: true, Final: "vless-active"}}
 	endpoints := []string{}
 	for i, p := range []config.Profile{r.Secrets.Germany, r.Secrets.Netherlands} {

@@ -17,6 +17,8 @@ type fakeClash struct {
 	calls, selects int
 	failSelect     bool
 	failObserve    bool
+	failAckOnce    bool
+	pendingAck     bool
 	barrier        chan struct{}
 }
 
@@ -38,6 +40,10 @@ func (f *fakeClash) Delay(ctx context.Context, out, target string, d time.Durati
 	return clash.DelayResult{Latency: 20 * time.Millisecond}, nil
 }
 func (f *fakeClash) Selected(context.Context, string) (string, error) {
+	if f.pendingAck {
+		f.pendingAck = false
+		return "", errors.New("ack unavailable")
+	}
 	if f.failObserve {
 		return "", errors.New("not reachable")
 	}
@@ -49,6 +55,10 @@ func (f *fakeClash) Select(_ context.Context, _, route string) error {
 		return errors.New("private error")
 	}
 	f.selected = route
+	if f.failAckOnce {
+		f.pendingAck = true
+		f.failAckOnce = false
+	}
 	return nil
 }
 
