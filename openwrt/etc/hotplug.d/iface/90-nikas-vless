@@ -1,0 +1,6 @@
+#!/bin/sh
+case "${ACTION:-}:${INTERFACE:-}" in
+ ifup:nikas_up|ifupdate:nikas_up)
+  /etc/init.d/nikas-sing-box reload >/dev/null 2>&1
+  ;;
+esac

@@ -1,0 +1,1 @@
+17 4 * * 0 /usr/bin/gatewayctl rules-update >/dev/null 2>&1

@@ -1,0 +1,7 @@
+{
+ "$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,
+ "required":["transit_subnet","management_address","management_subnet","management_listen","ha_host","admin_subnet","existing_networks","direct_resolver","encrypted_resolver","encrypted_server_name","clash_url","probe_urls"],
+ "properties":{
+ "transit_subnet":{"type":"string"},"management_address":{"type":"string"},"management_subnet":{"type":"string"},"management_listen":{"type":"string"},"ha_host":{"type":"string"},"admin_subnet":{"type":"string"},"existing_networks":{"type":"array","items":{"type":"string"}},"direct_resolver":{"type":"string"},"encrypted_resolver":{"type":"string"},"encrypted_server_name":{"type":"string"},"clash_url":{"type":"string","pattern":"^http://127\\.0\\.0\\.1:[0-9]+$"},"probe_urls":{"type":"array","minItems":2,"maxItems":2,"uniqueItems":true,"items":{"type":"string","pattern":"^https://"}},"interval_seconds":{"type":"integer","minimum":1},"timeout_seconds":{"type":"integer","minimum":1},"bootstrap_successes":{"type":"integer","minimum":1},"failure_cycles":{"type":"integer","minimum":1},"recovery_cycles":{"type":"integer","minimum":1}
+ }
+}

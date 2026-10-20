@@ -1,0 +1,14 @@
+table inet nikas_guard {
+ chain forward_guard {
+  type filter hook forward priority -10; policy accept;
+  iifname "{{MANAGEMENT}}" reject
+  oifname "{{MANAGEMENT}}" reject
+  iifname "{{DOWNSTREAM}}" meta nfproto ipv6 reject
+  oifname "{{DOWNSTREAM}}" meta nfproto ipv6 reject
+ }
+ chain input_guard {
+  type filter hook input priority -10; policy accept;
+  iifname "{{MANAGEMENT}}" ip saddr { {{HA_HOST}}, {{ADMIN_SUBNET}} } tcp dport 9080 accept
+  tcp dport 9080 reject
+ }
+}

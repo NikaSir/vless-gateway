@@ -1,0 +1,68 @@
+{
+  "schema_version": "1",
+  "gateway_version": "1.0.0-beta001",
+  "generated_at": "1970-01-01T00:00:04Z",
+  "state": "degraded_fail_open",
+  "freshness": {
+    "available": true,
+    "age_seconds": 1,
+    "stale": false
+  },
+  "data": {
+    "mode": "auto",
+    "desired_route": "direct",
+    "state": "degraded_fail_open",
+    "observed_at": "1970-01-01T00:00:03Z",
+    "germany": {
+      "healthy": false,
+      "available": true,
+      "latency_ms": {
+        "available": false,
+        "value": null,
+        "error": "probe_failed"
+      },
+      "consecutive_failures": 3,
+      "consecutive_successes": 0
+    },
+    "netherlands": {
+      "healthy": false,
+      "available": true,
+      "latency_ms": {
+        "available": false,
+        "value": null,
+        "error": "probe_failed"
+      },
+      "consecutive_failures": 1,
+      "consecutive_successes": 0
+    },
+    "last_route_change": null,
+    "active_route": {
+      "available": true,
+      "value": "direct"
+    },
+    "dns_route": {
+      "available": true,
+      "value": "direct"
+    },
+    "internet_status": {
+      "available": false,
+      "value": null,
+      "error": "not_measured"
+    },
+    "lan_status": {
+      "available": false,
+      "value": null,
+      "error": "not_measured"
+    },
+    "tunnel_status": {
+      "available": true,
+      "value": false
+    },
+    "bypass_rules": {
+      "available": false,
+      "value": null,
+      "error": "not_measured"
+    },
+    "history": null
+  }
+}

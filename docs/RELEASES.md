@@ -8,7 +8,11 @@
 
 ## Version lineage
 
-Repository bootstrap is not a functional gateway release. The public version scheme will be fixed when the first validated gateway build is ready; published history must not later be renumbered merely for cosmetic consistency.
+Use MAJOR.MINOR.PATCH-betaNNN, starting at 1.0.0-beta001. Both binaries and every API response display the full version. Published history is immutable.
+
+The first archive is nikas-vless-gateway-1.0.0-beta001-aarch64.tar.gz with a SHA-256 companion and per-file manifest. Go 1.27.2, sing-box 1.12.22 and initial RU source commits/checksums are pinned. Rebuild twice from the same clean commit and compare archives byte-for-byte.
+
+No release tag before bench acceptance. Green repository checks do not replace the device evidence in docs/ACCEPTANCE.md. Owner approval is required before tagging or applying live policy.
 
 ## Release gate
 

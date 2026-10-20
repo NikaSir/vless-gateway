@@ -1,6 +1,6 @@
-# VLESS Gateway
+# NikaS VLESS Gateway
 
-Standalone **network gateway** project for deploying and operating the VLESS-based gateway appliance.
+Gateway foundation **1.0.0-beta001** for NanoPi R5S LTS 4+64 GB, FriendlyWrt 24.10.2 and sing-box 1.12.22. Russian resources use DIRECT; other IPv4 traffic follows Germany → Netherlands → DIRECT. The 1 GbE port is management only; NanoPi adds no SNAT/masquerade.
 
 ## Scope boundary
 
@@ -10,7 +10,26 @@ The Home Assistant integration is a separate product and lives in **`NikaSir/ha-
 
 ## Target platform
 
-Initial project target: Raspberry Pi based deployment. Hardware-specific assumptions will be documented explicitly rather than embedded silently in scripts.
+Only NanoPi R5S is supported. This is a bench-validation candidate: real-device acceptance, physical bypass and a 24-hour soak are required before release/household deployment.
+
+- [Deployment](docs/DEPLOYMENT.md)
+- [Acceptance gates](docs/ACCEPTANCE.md)
+- [Rollback and bypass](docs/ROLLBACK.md)
+- [API v1](docs/API.md)
+- [Operations](docs/OPERATIONS.md)
+
+Build with Go 1.27.2, Python/jsonschema and ShellCheck:
+
+```sh
+export SING_BOX_BIN=$(sh scripts/fetch-sing-box-checker.sh amd64)
+make verify
+python3 scripts/check_contracts.py
+sh tests/openwrt/check_overlay.sh
+sh scripts/package.sh
+sh tests/package/check_archive.sh
+```
+
+The versioned ARM64 archive, per-file manifest and SHA-256 record appear in dist/. The OS and sing-box remain prerequisites; production credentials are never packaged.
 
 ## Repository policy
 
@@ -26,9 +45,11 @@ Initial project target: Raspberry Pi based deployment. Hardware-specific assumpt
 config/
 docs/
 scripts/
-systemd/
+cmd/
+internal/
+openwrt/
 tests/
 .github/workflows/
 ```
 
-Operational implementation will be added as the gateway build is validated on real hardware.
+Apply the prepared topology only within the approved maintenance window after reviewing the generated network plan and rollback command.

@@ -1,0 +1,5 @@
+{
+ "$schema":"https://json-schema.org/draft/2020-12/schema",
+ "type":"object","additionalProperties":false,"required":["ports"],
+ "properties":{"ports":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"object","additionalProperties":false,"required":["role","interface","mac","label"],"properties":{"role":{"enum":["upstream_2_5g","downstream_2_5g","management_1g"]},"interface":{"type":"string","pattern":"^[a-zA-Z0-9_.-]{1,15}$"},"mac":{"type":"string","pattern":"^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$"},"label":{"type":"string","minLength":1}}}}}
+}

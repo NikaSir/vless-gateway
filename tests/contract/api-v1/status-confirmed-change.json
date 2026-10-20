@@ -1,0 +1,126 @@
+{
+  "schema_version": "1",
+  "gateway_version": "1.0.0-beta001",
+  "generated_at": "1970-01-01T00:00:04Z",
+  "state": "healthy",
+  "freshness": {
+    "available": true,
+    "age_seconds": 1,
+    "stale": false
+  },
+  "data": {
+    "mode": "auto",
+    "desired_route": "de",
+    "state": "healthy",
+    "observed_at": "1970-01-01T00:00:02Z",
+    "germany": {
+      "healthy": true,
+      "available": true,
+      "latency_ms": {
+        "available": true,
+        "value": 20
+      },
+      "consecutive_failures": 0,
+      "consecutive_successes": 2
+    },
+    "netherlands": {
+      "healthy": true,
+      "available": true,
+      "latency_ms": {
+        "available": true,
+        "value": 20
+      },
+      "consecutive_failures": 0,
+      "consecutive_successes": 2
+    },
+    "last_route_change": {
+      "at": "1970-01-01T00:00:03Z",
+      "previous": "direct",
+      "current": "de",
+      "trigger": "selector_confirmed",
+      "probes": {
+        "at": "1970-01-01T00:00:02Z",
+        "germany": {
+          "targets": [
+            {
+              "success": true
+            },
+            {
+              "success": true
+            }
+          ]
+        },
+        "netherlands": {
+          "targets": [
+            {
+              "success": true
+            },
+            {
+              "success": true
+            }
+          ]
+        },
+        "complete": true
+      }
+    },
+    "active_route": {
+      "available": true,
+      "value": "de"
+    },
+    "dns_route": {
+      "available": true,
+      "value": "de"
+    },
+    "internet_status": {
+      "available": false,
+      "value": null,
+      "error": "not_measured"
+    },
+    "lan_status": {
+      "available": false,
+      "value": null,
+      "error": "not_measured"
+    },
+    "tunnel_status": {
+      "available": true,
+      "value": true
+    },
+    "bypass_rules": {
+      "available": false,
+      "value": null,
+      "error": "not_measured"
+    },
+    "history": [
+      {
+        "at": "1970-01-01T00:00:03Z",
+        "previous": "direct",
+        "current": "de",
+        "trigger": "selector_confirmed",
+        "probes": {
+          "at": "1970-01-01T00:00:02Z",
+          "germany": {
+            "targets": [
+              {
+                "success": true
+              },
+              {
+                "success": true
+              }
+            ]
+          },
+          "netherlands": {
+            "targets": [
+              {
+                "success": true
+              },
+              {
+                "success": true
+              }
+            ]
+          },
+          "complete": true
+        }
+      }
+    ]
+  }
+}

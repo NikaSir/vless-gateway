@@ -1,0 +1,2 @@
+config gateway 'main'
+ option policy_enabled '0'

@@ -1,0 +1,8 @@
+#!/bin/sh
+if [ "$1" = check ]; then
+ printf '%s\n' check >> "$NIKAS_TEST_LOG"
+ exit 0
+fi
+printf '%s\n' run >> "$NIKAS_TEST_LOG"
+printf '%s\n' "$$" > "$NIKAS_TEST_PID"
+exec sleep 30

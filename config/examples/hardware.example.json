@@ -1,0 +1,7 @@
+{
+ "ports": [
+  {"role":"upstream_2_5g","interface":"eth1","mac":"02:00:00:00:00:01","label":"REPLACE_WITH_PHYSICAL_UPSTREAM"},
+  {"role":"downstream_2_5g","interface":"eth2","mac":"02:00:00:00:00:02","label":"REPLACE_WITH_PHYSICAL_DOWNSTREAM"},
+  {"role":"management_1g","interface":"eth0","mac":"02:00:00:00:00:03","label":"REPLACE_WITH_PHYSICAL_MANAGEMENT"}
+ ]
+}

@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,"required":["api_token","clash_token"],"properties":{"api_token":{"type":"string","minLength":32},"clash_token":{"type":"string","minLength":32}}}

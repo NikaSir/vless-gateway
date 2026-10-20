@@ -1,0 +1,30 @@
+{
+  "schema_version": "1",
+  "gateway_version": "1.0.0-beta001",
+  "generated_at": "2026-10-20T00:00:00Z",
+  "state": "healthy",
+  "freshness": {
+    "available": true,
+    "age_seconds": 90,
+    "stale": true
+  },
+  "data": {
+    "mode": "auto",
+    "desired_route": "de",
+    "state": "healthy",
+    "observed_at": "2026-10-20T00:00:00Z",
+    "active_route": {
+      "available": true,
+      "value": "de"
+    },
+    "dns_route": {
+      "available": true,
+      "value": "de"
+    },
+    "internet_status": {
+      "available": false,
+      "value": null,
+      "error": "not_measured"
+    }
+  }
+}
